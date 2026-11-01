@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #111827;
+  --muted: #4b5563;
+  --surface: #f3f4f6;
+  --border: #9ca3af;
+  --accent: #1d4ed8;
+  --accent-foreground: #ffffff;
+  --warning-bg: #fffbeb;
+  --warning-border: #b45309;
+  --warning-foreground: #451a03;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0b0f19;
+    --foreground: #f3f4f6;
+    --muted: #b6bdc9;
+    --surface: #161c2b;
+    --border: #6b7280;
+    --accent: #93c5fd;
+    --accent-foreground: #0b0f19;
+    --warning-bg: #2a1d05;
+    --warning-border: #f59e0b;
+    --warning-foreground: #fef3c7;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-warning-bg: var(--warning-bg);
+  --color-warning-border: var(--warning-border);
+  --color-warning-foreground: var(--warning-foreground);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family:
+    system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Noto Sans Devanagari",
+    "Noto Sans Kannada", sans-serif;
+  line-height: 1.6;
+}
+
+/* Visible keyboard focus on every interactive element. */
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

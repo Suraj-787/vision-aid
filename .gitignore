@@ -1,0 +1,19 @@
+node_modules
+.next
+out
+dist
+build
+coverage
+.env
+.env.local
+.env.*.local
+!.env.example
+.DS_Store
+*.log
+
+# next.js / typescript / vercel
+.vercel
+*.pem
+*.tsbuildinfo
+next-env.d.ts
+npm-debug.log*
