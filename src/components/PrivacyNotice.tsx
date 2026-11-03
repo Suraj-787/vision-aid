@@ -10,10 +10,14 @@ export function PrivacyNotice() {
       <p className="mt-2">
         In this build, Start camera shows a preview on your device only, and
         Start microphone runs a local test that converts sound and immediately
-        discards it. No camera frames or microphone audio are captured, stored
-        or sent anywhere. Once live sessions are added, camera frames and
-        microphone audio will be sent to the configured AI service (Google
-        Gemini) while a session is active.
+        discards it. Nothing is captured, stored or sent anywhere yet.
+      </p>
+      <p className="mt-2">
+        When asking questions is added, each question will send one photo you
+        take, together with your question, to Google&apos;s Gemini service
+        through VisionAid&apos;s server. If you speak your question, your
+        browser may send the audio to its own speech service to turn it into
+        text. You will always be able to type instead.
       </p>
       <ul className="mt-3 list-disc space-y-1 pl-5">
         <li>The camera and microphone stay off until you choose to start them.</li>
@@ -21,11 +25,13 @@ export function PrivacyNotice() {
           Stop camera and Stop microphone turn each one off and release it at
           any time.
         </li>
-        <li>VisionAid does not store audio, video or transcripts.</li>
+        <li>VisionAid does not store photos, audio, questions or answers.</li>
         <li>
-          Test only with people who have agreed, and avoid private documents,
-          screens, addresses and bystanders. Data handling can differ between
-          Google API tiers, so check Google&apos;s current terms first.
+          Test only with people who have agreed. Avoid faces and bystanders,
+          private documents, prescriptions with personal details, addresses,
+          cards and screens. On Google&apos;s free tier, submitted content may
+          be used to improve Google&apos;s products, so check Google&apos;s
+          current terms first.
         </li>
       </ul>
     </section>

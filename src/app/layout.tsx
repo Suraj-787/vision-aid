@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "VisionAid — experimental visual assistant",
   description:
-    "An experimental, browser-based voice and camera assistant that describes selected aspects of your surroundings. Not a navigation or safety tool.",
+    "An experimental accessibility assistant: take one photo, ask a question by voice or text, and hear the answer. Not a navigation, safety or medical tool.",
 };
 
 export const viewport: Viewport = {

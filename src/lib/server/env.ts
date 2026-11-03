@@ -33,6 +33,15 @@ function looksLikeApiKey(value: string): boolean {
   );
 }
 
+/**
+ * Optional Live Mode feature flag. Fails closed: enabled only when
+ * ENABLE_LIVE_MODE is "true" (case-insensitive, trimmed). Missing, empty,
+ * "false", "1", "yes" or anything else means disabled.
+ */
+export function isLiveModeEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.ENABLE_LIVE_MODE?.trim().toLowerCase() === "true";
+}
+
 function isAllowedModel(value: string): value is AllowedLiveModel {
   return (ALLOWED_LIVE_MODELS as readonly string[]).includes(value);
 }

@@ -1,130 +1,164 @@
-# VisionAid — Product and Engineering Plan
+# VisionAid — Product and Engineering Plan (Tap-to-Ask)
+
+Revised 2026-11-02: the primary interaction changed from continuous Gemini Live
+streaming to **Tap-to-Ask**. The Live design is kept only as an optional future
+mode. Architecture: `docs/architecture.md`. Roadmap: `docs/implementation-roadmap.md`.
 
 ## 1. Product vision
 
-VisionAid is a mobile-first web experience that gives blind and low-vision users spoken, on-demand information about selected aspects of their immediate surroundings. A user starts a camera/microphone session, hears concise scene descriptions, and can interrupt to ask questions such as:
+VisionAid is an experimental, AI-powered accessibility assistant that helps
+blind and low-vision users understand visual information through a smartphone
+camera and natural voice interaction. It is an information assistant, not a
+navigation or safety tool.
 
-- “What is written on that sign?”
-- “Can you describe the objects on the table?”
-- “What does the label say?”
-- “Is there a person standing near the desk?”
+## 2. Primary interaction
 
-The assistant answers based only on recent camera/audio context and communicates uncertainty.
+**Camera preview → capture one image → speak or type a question → process image
+and question together → display and speak the answer.**
 
-## 2. Target experience
+1. The user starts the camera preview.
+2. The user taps a large, accessible **Ask** button; the app captures **one** image.
+3. The user asks a question by speech or by typing (typing is always available).
+4. Speech is converted to text.
+5. Image and question are sent together, in **one** request, to a server-side
+   Gemini Flash-family model (`models.generateContent`).
+6. Gemini returns a structured JSON response.
+7. Deterministic application code validates and post-processes it.
+8. The answer is shown as text and spoken aloud.
 
-- Open a website on a phone; no native app is required for the first prototype.
-- User explicitly starts camera and microphone.
-- The interface gives a clear spoken and visual indication when the session is active.
-- Camera frames are sampled periodically (initially no more than about 1 FPS) and sent with user audio to a multimodal Live API session.
-- The user can ask questions at any time.
-- Spoken assistant output is interruptible; user speech takes priority.
-- English, Hindi, and Kannada are initial language test targets.
-- The assistant can read visible text when legible and describe ordinary objects/scenes.
-- The assistant avoids repetitive narration and distinguishes current observations from earlier context.
+No continuous audio or video streaming is needed for the primary functionality.
 
-## 3. MVP requirements
+## 3. Core features
+
+### A. Scene description
+- Describe visible surroundings, identify common objects, answer contextual
+  questions about the captured image.
+- Approximate left / right / ahead only when visually supported, phrased as approximate.
+- Never claim a path, road, crossing, stairway or doorway is safe or clear;
+  never claim every obstacle was detected.
+
+### B. Text and medicine-label reading
+- Read printed text, notices, signboards and product labels aloud.
+- Extract medicine names and expiry information.
+- Visible printed dosage instructions may be read **verbatim**, framed as "the
+  label says…".
+- Never recommend a dose, prescribe, judge whether a medicine is suitable for
+  someone, or interpret or explain instructions; refer such questions to a
+  pharmacist or doctor.
+
+### C. Indian currency identification
+- Identify ₹10, ₹20, ₹50, ₹100, ₹200 and ₹500 notes.
+- Return an uncertain result when visual evidence is insufficient.
+- Never claim to authenticate notes or detect counterfeits.
+
+### D. Expiry-date checking
+- Extract a possible expiry date from product or medicine packaging into a
+  structured form.
+- Parse, validate and compare dates in deterministic code, not by LLM reasoning.
+- Handle ambiguous, missing and unreadable dates explicitly; never confuse a
+  manufacturing date with an expiry date.
+
+## 4. MVP requirements
 
 ### Must have
-- Responsive, accessible web UI.
-- Explicit camera and microphone permission/start controls.
-- Live camera preview and clear active/paused/stopped state.
-- Secure backend creation of a short-lived client token.
-- Live multimodal session with microphone input, sampled camera frames, and spoken output.
-- Interruptible assistant audio.
-- Voice questions and spoken responses.
-- Clear stop control that releases camera/microphone tracks.
-- Basic language testing in English, Hindi, and Kannada.
-- Privacy notice and non-navigation safety disclaimer.
+- Responsive, accessible, mobile-first web UI with a large primary Ask button.
+- Explicit camera permission and preview (existing), clear stop control.
+- Single still capture per question, downscaled JPEG.
+- Speech input (Web Speech API where supported) with a text-input fallback.
+- Server-side `POST /api/ask` with one Gemini multimodal request per question.
+- Structured output, validated server-side; deterministic expiry and currency logic.
+- Spoken answers (`speechSynthesis`) with a stop control; text always shown.
+- Safety, privacy and uncertainty language throughout.
+- English, Hindi and Kannada evaluation.
 
-### Should have after core loop works
-- Short-term scene context (session-only, not persisted).
-- OCR/read-aloud prompts for visible text.
-- Approximate relative positioning such as left/right/centre, only when supported.
-- Adaptive narration frequency and repetition suppression.
-- Optional text transcript/captions for accessibility and debugging, with privacy controls.
+### Should have
+- Advisory image-quality checks (brightness, blur) with retake guidance.
+- Quick-action shortcuts (Read text, Check expiry, Identify note).
+- Optional Sarvam speech-to-text fallback for Indian languages.
+- Setting to rely on the screen reader instead of app speech.
 
-### Not in initial MVP
-- Native iOS/Android app.
-- Background camera operation or screen-locked operation.
-- Smart-glasses integration.
-- Navigation, route planning, obstacle avoidance, crossing guidance, or safety guarantees.
-- Persistent storage of camera frames, audio, or transcripts.
-- User accounts, database, analytics, Redis, multi-agent architecture.
-- Automatic emergency detection.
+### Not in the MVP
+- Continuous voice or video streaming (kept as an optional future Live Mode,
+  disabled by default via `ENABLE_LIVE_MODE=false`).
+- Native apps, background or screen-locked operation, smart glasses.
+- Navigation, route planning, obstacle avoidance, crossing guidance, safety guarantees.
+- Medical advice of any kind; counterfeit detection.
+- Persistent storage of images, audio, questions, transcripts or answers.
+- User accounts, database, Redis, queues, analytics, multi-agent orchestration.
 
-## 4. Safety requirements
+## 5. Technology
 
-VisionAid is an experimental environmental information assistant, not a safety-critical mobility tool. It must not:
-- Tell the user a road is safe to cross.
-- Claim a path is clear or that all obstacles have been detected.
-- Give turn-by-turn navigation or instructions for negotiating stairs/roads.
-- Replace a white cane, guide dog, mobility training, or human assistance.
+- Next.js App Router, TypeScript, React, Tailwind CSS (existing).
+- Browser MediaDevices (camera), canvas (still capture, downscale, JPEG).
+- Web Speech API: `SpeechRecognition` for input, `speechSynthesis` for output.
+- Optional Sarvam STT via a server route (Milestone 7, requires approval).
+- `@google/genai` on the server for one standard multimodal request per question.
+- Existing server modules for env validation, request guarding and rate limiting.
 
-For safety-critical requests, the assistant should say it cannot reliably assess safety and encourage the user to rely on established mobility aids and trusted assistance. The product UI must make this limitation visible.
+## 6. Model selection and cost strategy
 
-## 5. Suggested technology
+- Use a Gemini **Flash-family** model configured server-side via `GEMINI_MODEL`.
+  No model is assumed to be free or to have quota: the exact model, the
+  project's tier and its limits must be verified in Google AI Studio before
+  Milestone 5. Candidate IDs from the public docs (2026-11-02):
+  `gemini-3.8-flash`, `gemini-3.5-flash-lite`. Details:
+  `docs/model-and-quota-notes.md`.
+- Planned initial API: `models.generateContent` in `@google/genai`.
+- One request per question; no separate calls for intent, OCR or routing.
+- Downscaled images, short answers, low thinking level where quality allows.
+- App-side rate limits; no indefinite retries; graceful 429 / quota handling.
+- No caching of images, questions or answers.
 
-- Next.js App Router + TypeScript
-- Tailwind CSS
-- Browser MediaDevices API
-- HTML video + canvas for sampled frames
-- Web Audio API / AudioWorklet for real-time audio processing, if required by the current Live API protocol
-- `@google/genai` when supported by current official docs; otherwise documented WebSocket protocol
-- Next.js server route for ephemeral token creation
+## 7. Safety requirements
 
-Do not add a database or external speech provider in the first iteration. First test native Gemini Live multilingual audio. Consider an alternative STT/TTS provider only if measured quality is inadequate and after discussing the trade-offs.
+VisionAid must not:
+- Say a road, path, crossing, stairway or doorway is safe or clear, or that all
+  obstacles have been detected.
+- Give turn-by-turn navigation or mobility instructions.
+- Replace a white cane, guide dog, mobility training or human assistance.
+- Recommend a medicine dose, prescribe, judge whether a medicine is suitable,
+  or interpret instructions (reading printed label text verbatim is allowed).
+- Claim a banknote is genuine or counterfeit.
+- Present low-confidence readings (text, dates, denominations) as certain.
 
-## 6. Model selection and account quota
-
-The user's Google AI Studio dashboard for project “AutoToon” showed a Free Tier entry named **Gemini 3.8 Live**, with 65K TPM and Unlimited RPM/RPD in the displayed 28-day view. The same dashboard showed other Live/audio models, including Gemini 3 Flash Live and Gemini 2.5 Flash Native Audio Dialog.
-
-Treat these as dashboard observations, not a guarantee of unrestricted use. The TPM limit, session limits, concurrency, preview/model availability, regional access, and policy restrictions may still apply. “Unlimited RPM/RPD” does not mean unlimited total usage.
-
-**Important:** Do not assume `gemini-3.8-live` is the exact API model ID. Verify the exact identifier and Live API compatibility against current official Google documentation before coding. Keep the value in `GEMINI_LIVE_MODEL` so it can be changed without editing application code.
-
-## 7. Architecture summary
-
-1. Browser requests camera/microphone only after user action.
-2. Browser previews camera locally.
-3. Browser calls a Next.js server endpoint to request an ephemeral Live API token.
-4. Server uses the permanent API key from server-only environment variables and the currently documented token-creation API.
-5. Browser connects to the Live API using the short-lived token and verified model ID.
-6. Browser sends microphone audio and sampled camera frames according to the documented protocol.
-7. Browser plays assistant audio and supports interruption.
-8. No raw media is stored by the app.
-
-See `docs/architecture.md`.
+For safety-critical or medical questions the assistant says it cannot reliably
+help with that, and recommends established mobility aids, trusted assistance,
+or a pharmacist/doctor as appropriate. These rules live in the server-side
+system instruction **and** in deterministic post-processing.
 
 ## 8. Privacy principles
 
-- Explain that active-session audio/video is transmitted to the configured AI provider.
-- Obtain explicit user action before activating camera/microphone.
-- Avoid retaining raw media and transcripts.
-- Never log secrets or media payloads.
-- Use controlled, consent-based tests; avoid bystanders and sensitive environments.
-- Check the provider's current data-use terms for the selected tier before testing with real people. Free-tier data handling may differ from paid-tier handling. Do not use sensitive footage for early tests.
+- Camera and microphone activate only after explicit user action and have clear stop controls.
+- During a question, the captured image and question text are sent to Google's
+  Gemini API through VisionAid's server.
+- Browser speech recognition may process audio through an external
+  browser/provider service (on-device recognition is not available on mobile
+  browsers). Typed input is always available as an alternative.
+- Sarvam STT is optional for Milestone 7 and is not integrated now; if added,
+  audio would be sent to Sarvam.
+- Nothing is stored persistently; images, audio, questions and answers are not logged.
+- The permanent API keys never reach the browser.
+- **Free tier:** Google's pricing page lists Free-tier content as "Used to
+  improve our products"; paid tier does not. Do not send sensitive personal,
+  medical, financial or bystander information during free-tier testing; use
+  staged scenes and consenting participants.
 
 ## 9. Success criteria
 
-- User can start and stop the session reliably on a supported mobile browser.
-- The browser releases media devices on stop and teardown.
-- A user can ask a spoken question and receive a spoken response.
-- Camera context is recent and sampling is rate-limited.
-- Assistant speech can be interrupted promptly.
-- English, Hindi, and Kannada behavior is evaluated with a repeatable test set.
-- No unsafe navigation claims appear in the evaluation set.
-- No raw media or API secrets appear in logs or persistent storage.
+- A user can capture, ask (voice or text), and hear an answer on a supported mobile browser.
+- One Gemini request per question; no streaming in the default flow.
+- Devices are released on stop and teardown.
+- Expiry results come from deterministic code and never treat MFG dates as expiry.
+- Currency answers stay within the six supported notes and never claim authenticity.
+- No unsafe navigation or medical claims in the evaluation set.
+- No images, audio, transcripts, keys or tokens in logs, bundles or storage.
 
 ## 10. Evaluation
 
-Measure:
-- Time from end of user question to first audible response.
-- Speech recognition accuracy for the three target languages.
-- Accuracy of visible-text reading on a controlled test set.
-- Scene-description usefulness and hallucination rate.
-- Interruption response time.
-- Battery/network usage during a short session.
-- Correct handling of uncertainty and safety-critical questions.
-
-Run tests with informed consent and supervision. Do not ask participants to rely on VisionAid for movement or navigation.
+Measure: time from question to first spoken word; OCR accuracy on a controlled
+set; expiry extraction and comparison accuracy (including MFG-only and ambiguous
+cases); currency accuracy by denomination and lighting; scene-answer usefulness
+and hallucination rate; speech recognition accuracy per language and browser;
+TTS voice availability per language; token usage per question; safety-refusal
+correctness. Run tests with informed consent and supervision; never ask
+participants to rely on VisionAid for movement or medical decisions.

@@ -105,6 +105,12 @@ export function useCamera() {
       }
 
       devLog("camera", `permission granted; ${stream.getTracks().length} track(s)`);
+      // Page was hidden while the permission prompt was open: do not start.
+      if (document.visibilityState === "hidden") {
+        stream.getTracks().forEach((track) => track.stop());
+        fail(cameraError("page-hidden"));
+        return;
+      }
       streamRef.current = stream;
       requestingRef.current = false;
       stream.getVideoTracks().forEach((track) => {
@@ -130,14 +136,25 @@ export function useCamera() {
 
   useEffect(() => {
     // Leaving the page (including bfcache) must not leave the camera on.
+    // Switching apps or locking the screen fires visibilitychange, not
+    // pagehide, so a hidden page also turns the camera off (mobile browsers
+    // do not reliably keep it running in the background, and it must not run
+    // unseen).
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden" && streamRef.current) {
+        fail(cameraError("page-hidden"));
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("pagehide", stop);
     return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("pagehide", stop);
       // Unmount: cancel any pending request and stop all tracks. No setState.
       cancelPending();
       releaseStream();
     };
-  }, [stop, cancelPending, releaseStream]);
+  }, [stop, fail, cancelPending, releaseStream]);
 
   return { videoRef, status, error, start, stop };
 }

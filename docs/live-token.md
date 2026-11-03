@@ -1,5 +1,13 @@
 # Live token endpoint (Milestone 3)
 
+> **Status (2026-11-02): retained infrastructure for an optional future Live
+> Mode; not used by the default Tap-to-Ask workflow.** Tap-to-Ask calls Gemini
+> from the server (`POST /api/ask`, Milestone 5) and never gives the browser a
+> Gemini credential. **Disabled by default:** unless the server-side flag
+> `ENABLE_LIVE_MODE` is exactly `true`, the route returns
+> `404 LIVE_MODE_DISABLED` before reading the API key and mints nothing. Its
+> env, origin-check and rate-limit modules are reused by `/api/ask`.
+
 `POST /api/live-token` mints a short-lived, single-use Gemini Live ephemeral
 token. The permanent API key never leaves the server. Nothing in this milestone
 connects the camera or microphone to Gemini; the browser does not call the
@@ -36,6 +44,7 @@ Errors are `{ "error": { "code", "message" } }` with generic, safe messages:
 
 | Status | `code` | Meaning |
 |---|---|---|
+| 404 | `LIVE_MODE_DISABLED` | `ENABLE_LIVE_MODE` is not `true` (checked first; nothing else runs) |
 | 403 | `FORBIDDEN_ORIGIN` | Missing / non-matching `Origin` |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | `Content-Type` is not `application/json` |
 | 413 / 400 | `PAYLOAD_TOO_LARGE` / `INVALID_REQUEST` | Body > 1 KB, invalid JSON, or any field other than `{}` |
@@ -84,7 +93,9 @@ Session limits from the Live docs, which the config accounts for:
 
 ## Configure and test
 
-1. `cp .env.example .env.local`, then set `GEMINI_API_KEY` (leave `GEMINI_LIVE_MODEL` empty or `gemini-3.8-live`). `.env*` is gitignored except `.env.example`.
+1. `cp .env.example .env.local`, then set `GEMINI_API_KEY` and **`ENABLE_LIVE_MODE=true`**
+   (leave `GEMINI_LIVE_MODEL` empty or `gemini-3.8-live`). Restart the server after
+   changing env files. `.env*` is gitignored except `.env.example`.
 2. `npm run dev`, then in another terminal (the `Origin` header is required):
 
 ```bash

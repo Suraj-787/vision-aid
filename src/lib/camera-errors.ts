@@ -5,6 +5,7 @@ export type CameraErrorKind =
   | "no-camera"
   | "in-use"
   | "disconnected"
+  | "page-hidden"
   | "unknown";
 
 export interface CameraError {
@@ -26,6 +27,8 @@ const MESSAGES: Record<CameraErrorKind, string> = {
     "The camera could not be started. It may be in use by another app or tab. Close other apps using the camera and try again.",
   disconnected:
     "The camera stopped unexpectedly, so the preview was turned off. Check the camera and choose Start camera to try again.",
+  "page-hidden":
+    "The camera was turned off because the page was hidden or in the background. Choose Start camera to turn it on again.",
   unknown:
     "Something went wrong while starting the camera. Choose Start camera to try again.",
 };

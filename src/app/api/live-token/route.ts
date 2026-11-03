@@ -1,5 +1,9 @@
 import { ApiError } from "@google/genai";
-import { CONFIG_PROBLEM_LOG, readLiveServerConfig } from "@/lib/server/env";
+import {
+  CONFIG_PROBLEM_LOG,
+  isLiveModeEnabled,
+  readLiveServerConfig,
+} from "@/lib/server/env";
 import { issueLiveToken } from "@/lib/server/live-token";
 import { SlidingWindowLimiter } from "@/lib/server/rate-limit";
 import { checkBody, checkOrigin, clientKey } from "@/lib/server/request-guard";
@@ -10,6 +14,9 @@ import { checkBody, checkOrigin, clientKey } from "@/lib/server/request-guard";
  * key stays in this process; nothing here stores or logs a token.
  *
  * Deliberately independent of camera/microphone code (Milestone 3).
+ *
+ * Optional Live Mode only: Tap-to-Ask does not use this route. It mints
+ * nothing unless ENABLE_LIVE_MODE=true (see isLiveModeEnabled).
  */
 
 // Basic, in-memory abuse protection (per server process; see docs/live-token.md).
@@ -48,6 +55,11 @@ function logUpstreamError(err: unknown, apiKey: string) {
 }
 
 export async function POST(request: Request) {
+  // Checked first: when disabled, the key is not read and nothing else runs.
+  if (!isLiveModeEnabled()) {
+    return fail(404, "LIVE_MODE_DISABLED", "Live Mode is not enabled on this server.");
+  }
+
   const config = readLiveServerConfig();
   if (!config.ok) {
     console.error(`[live-token] server misconfigured: ${CONFIG_PROBLEM_LOG[config.problem]}`);

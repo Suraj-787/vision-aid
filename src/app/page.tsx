@@ -24,14 +24,16 @@ export default function Home() {
             What it is
           </h2>
           <p>
-            VisionAid is a voice and camera assistant for blind and low-vision
-            people. When it is finished you will be able to ask questions such
-            as &ldquo;What does this label say?&rdquo; and hear a spoken answer
-            based on what the camera recently saw.
+            VisionAid is an accessibility assistant for blind and low-vision
+            people. When it is finished, you will start the camera, take one
+            photo, and ask a question about it by speaking or typing, such as
+            &ldquo;What does this label say?&rdquo;. VisionAid will show and
+            speak an answer about that photo only.
           </p>
           <p>
-            It will describe what it can see, say when it is unsure, and stay
-            quiet about things it cannot judge.
+            It is planned to describe scenes, read text and labels, identify
+            Indian banknotes and check expiry dates. It will say when it is
+            unsure and will not judge safety or give medical advice.
           </p>
         </section>
 
@@ -42,8 +44,8 @@ export default function Home() {
 
       <footer className="border-t border-border">
         <div className="mx-auto w-full max-w-3xl px-4 py-5 text-sm text-muted sm:px-6">
-          Early build: local camera preview and microphone test only. Nothing is
-          sent anywhere and AI features are not active.
+          Early build: local camera preview and microphone test only. Asking
+          questions is not available yet, and nothing is sent anywhere.
         </div>
       </footer>
     </>

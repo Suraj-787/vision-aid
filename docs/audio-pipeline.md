@@ -1,5 +1,11 @@
 # Audio pipeline notes (Milestone 2)
 
+> **Status (2026-11-02): retained, not part of the default Tap-to-Ask flow.**
+> Tap-to-Ask uses the browser's Web Speech API for speech input, which manages
+> the microphone itself. This PCM16 pipeline is kept for the optional future
+> Live Mode and may be reused to record clips for the optional Sarvam STT
+> fallback (Milestone 7). See `docs/architecture.md`.
+
 ## Verified Live API audio requirements (checked 2026-11-02)
 
 Sources:
