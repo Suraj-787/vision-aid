@@ -17,13 +17,17 @@ Google's products — see `docs/model-and-quota-notes.md`).
 - [ ] Stop, error, hidden page, `pagehide` and unmount release all tracks.
 
 ## Capture and image preparation (Milestone 4)
+_Automated: unit tests (`npm test`) and headless-Chrome checks with a fake camera passed on 2026-11-03. Real phones: not yet tested._
+
 - [ ] Exactly one still per question; no periodic sampling.
 - [ ] Image is downscaled and JPEG-encoded; size within the agreed cap.
-- [ ] Near-black / clearly unusable images are not sent; user is asked to retake.
-- [ ] Borderline images show a warning with retake / send-anyway.
+- [ ] Dark, bright and low-detail photos show an advisory tip and a Retake option, and are **not** blocked (advisory only in Milestone 4).
+- [ ] Quality tips are announced to screen readers.
 - [ ] Captured image is not kept after the request (no history, no storage).
 
 ## Speech and text input (Milestones 4, 7)
+_Automated with a mock engine plus Chrome's real engine in headless mode; real phones and Hindi/Kannada: not yet tested._
+
 - [ ] Microphone/speech starts only on user action; listening state is visible and announced.
 - [ ] Unsupported `SpeechRecognition` (e.g. Firefox Android) falls back to text input.
 - [ ] Recognition errors (no-speech, not-allowed, network, language-not-supported) are explained.

@@ -30,7 +30,7 @@ and disabled unless `ENABLE_LIVE_MODE=true`.
 Its server modules (env validation, request guard, rate limiter) are reused by
 `/api/ask`.
 
-## Milestone 4 — Tap-to-Ask interface
+## Milestone 4 — Tap-to-Ask interface ✅ (implemented 2026-11-03; awaiting review)
 Flow: camera preview → capture one image → speak or type a question → (prepared
 for) processing image and question together → (later) display and speak the answer.
 
@@ -50,6 +50,14 @@ for) processing image and question together → (later) display and speak the an
 **Acceptance:** On a real phone, a user can capture a still, ask by voice or
 text, and reach a "ready to send" state; devices release correctly; nothing is
 transmitted to Gemini.
+
+**As built:** pure, unit-tested modules (`src/lib/image/{scale,quality}.ts`,
+`src/lib/ask/ask-flow.ts`, `src/lib/speech/{transcript,speech-errors}.ts`, run
+with `npm test`), browser modules (`capture.ts`, `web-speech.ts`), hooks
+(`useAsk`, `useSpeechInput`) and components (`AskPanel`, `CapturedImageReview`,
+`QuestionInput`, `ActionButton`). Images are downscaled to ≤ 768 px JPEG
+(quality 0.8); quality checks are advisory only and never block. Real-device
+testing on phones is still outstanding.
 
 ## Milestone 5 — Gemini image understanding
 - User confirms the exact `GEMINI_MODEL`, tier and quota in Google AI Studio;

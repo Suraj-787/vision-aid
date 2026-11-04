@@ -8,16 +8,22 @@ export function PrivacyNotice() {
         Privacy
       </h2>
       <p className="mt-2">
-        In this build, Start camera shows a preview on your device only, and
-        Start microphone runs a local test that converts sound and immediately
-        discards it. Nothing is captured, stored or sent anywhere yet.
+        In this build, the camera shows a preview on your device, and Capture
+        photo takes one still that stays in your browser&apos;s memory. Your
+        photo and typed question are not stored or sent anywhere: Ask only
+        prepares them on your device.
       </p>
       <p className="mt-2">
-        When asking questions is added, each question will send one photo you
-        take, together with your question, to Google&apos;s Gemini service
-        through VisionAid&apos;s server. If you speak your question, your
-        browser may send the audio to its own speech service to turn it into
-        text. You will always be able to type instead.
+        <strong>Speech is different.</strong> If you tap Start speaking, your
+        browser&apos;s own speech recognition listens, and it may send your
+        voice to an external speech service (run by your browser or its
+        provider) to turn it into text. VisionAid receives only the text. You
+        can always type your question instead.
+      </p>
+      <p className="mt-2">
+        When asking the AI is added, each question will send one photo, together
+        with your question, to Google&apos;s Gemini service through
+        VisionAid&apos;s server.
       </p>
       <ul className="mt-3 list-disc space-y-1 pl-5">
         <li>The camera and microphone stay off until you choose to start them.</li>

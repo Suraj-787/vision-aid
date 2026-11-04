@@ -44,8 +44,10 @@ export default function Home() {
 
       <footer className="border-t border-border">
         <div className="mx-auto w-full max-w-3xl px-4 py-5 text-sm text-muted sm:px-6">
-          Early build: local camera preview and microphone test only. Asking
-          questions is not available yet, and nothing is sent anywhere.
+          Early build: you can capture a photo and prepare a question on your
+          device, but asking the AI is not available yet. Photos and typed
+          questions are not sent anywhere. Speech input uses your browser&apos;s
+          speech service.
         </div>
       </footer>
     </>

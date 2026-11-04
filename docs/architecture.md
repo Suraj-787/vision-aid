@@ -47,14 +47,15 @@ and question together → display and speak the answer.**
 ```text
 Mobile browser (Next.js App Router, React, Tailwind)
   ├─ Camera preview                    src/hooks/useCamera.ts            (exists, Milestone 1)
-  ├─ Still capture + downscale + JPEG  planned  src/lib/image/*          (Milestone 4)
-  ├─ Quality checks (brightness, blur) planned  src/lib/image/quality.ts (M4 design, M8 tuning)
-  ├─ Speech input provider             planned  src/lib/speech/*         (Milestone 4; Sarvam in M7)
-  │    ├─ WebSpeechProvider     (browser SpeechRecognition)
-  │    ├─ SarvamProvider        (optional; audio -> our server -> Sarvam)
-  │    └─ Text input fallback   (always available)
+  ├─ Still capture + downscale + JPEG  src/lib/image/{capture,scale}.ts  (exists, Milestone 4)
+  ├─ Quality checks (brightness, blur) src/lib/image/quality.ts          (exists, advisory; tuned in M8)
+  ├─ Speech input                      src/lib/speech/*, useSpeechInput  (exists, Milestone 4)
+  │    ├─ Web Speech API        (browser SpeechRecognition; implemented)
+  │    ├─ Sarvam STT            (optional; audio -> our server -> Sarvam; Milestone 7, not built)
+  │    └─ Typed question        (always available)
+  ├─ Ask-flow state machine            src/lib/ask/ask-flow.ts (pure), src/hooks/useAsk.ts (exists, M4)
+  ├─ Ask UI                            AskPanel, CapturedImageReview, QuestionInput (exists, M4)
   ├─ Answer presenter: text + speechSynthesis (stoppable)    planned (Milestone 5)
-  ├─ Ask-flow state machine            planned  src/hooks/useAsk.ts      (Milestone 4)
   └─ Microphone PCM16 test panel       src/hooks/useMicrophone.ts        (exists; Live Mode / Sarvam reuse)
 
 Next.js server
@@ -86,17 +87,24 @@ Planned file names are proposals; they are fixed at the start of each milestone.
    camera; released on Stop, error, hidden page, `pagehide`, unmount.
 2. **Capture** — one still per question, drawn from the live `<video>` to a canvas.
    No periodic frame sampling in Tap-to-Ask.
-3. **Quality checks (advisory, client-side)** — mean luminance (too dark / too
-   bright) and a sharpness measure (e.g. variance of the Laplacian on a small
-   greyscale copy). Thresholds are calibrated on real devices in Milestone 8.
-   - Clearly unusable (e.g. near-black) → do not send; ask the user to retake.
-   - Borderline → warn, let the user retake or send anyway.
-   - A check that is not reliable on a device must not block sending.
-4. **Downscale + encode** — JPEG (`image/jpeg`, a documented Gemini input type).
-   Proposed starting point: longest side ≈ 1024–1536 px, quality ≈ 0.8, target
-   well under 1.5 MB; tuned in Milestone 8 against OCR accuracy, latency and
-   token cost (Gemini counts 258 tokens per 768 × 768 tile; `media_resolution`
-   trades detail for tokens). The 100 MB inline limit is far above this.
+3. **Quality checks (advisory, client-side; implemented in Milestone 4)** —
+   `src/lib/image/quality.ts` computes mean luminance, fractions of near-black and
+   blown-out pixels, and sharpness (variance of the 3×3 Laplacian) on a ≤256 px
+   copy, and returns advice: too dark, too bright, "may be blurry or have little
+   detail". Blur is only reported when exposure is acceptable.
+   - **Advice only.** The thresholds are uncalibrated starting points
+     (`DEFAULT_QUALITY_THRESHOLDS`), so a flagged photo is never rejected or
+     blocked: the user sees a tip and may retake or continue.
+   - Blocking an image is reconsidered in Milestone 8, only for a check shown to
+     be reliable on real devices.
+4. **Downscale + encode (implemented in Milestone 4)** — `src/lib/image/capture.ts`
+   draws the frame once to a canvas at a size from `fitWithin` (longest side ≤
+   768 px, aspect ratio kept, never upscaled) and encodes `image/jpeg` at quality
+   0.8 (both configurable). Canvases are released immediately. The 768 px start
+   keeps tokens low (Gemini counts 258 tokens per 768 × 768 tile; `media_resolution`
+   trades detail for tokens) but may be too small for fine print, so size and
+   quality are tuned in Milestone 8 against OCR accuracy, latency and cost. The
+   100 MB inline limit is far above this.
 5. **Lifetime** — the image exists only in memory for the request. Not cached,
    not stored, not logged, not kept in history.
 
@@ -104,14 +112,24 @@ Planned file names are proposals; they are fixed at the start of each milestone.
 
 A small provider interface so the ask flow does not depend on one engine:
 
+As built in Milestone 4 (`src/lib/speech/`), a provider starts a single-utterance
+session and reports text; the UI never depends on the engine:
+
 ```ts
-interface SpeechInputProvider {
-  id: "web-speech" | "sarvam";
-  isSupported(lang: SupportedLang): Promise<boolean>;
-  listen(opts: { lang: SupportedLang; signal: AbortSignal }): Promise<string>; // final text
-}
 type SupportedLang = "en-IN" | "hi-IN" | "kn-IN";
+interface SpeechSession { stop(): void; abort(): void }   // abort(): no more callbacks
+// web-speech.ts: startWebSpeech(lang, { onTranscript(text, isFinal), onError(kind), onEnd() }): SpeechSession
+// useSpeechInput(): { supported, error, start({lang,onTranscript,onEnd}), stop(), abort(), clearError() }
 ```
+
+Behaviour: starts only from a user tap; `continuous = false`, `interimResults =
+true`, `lang` set explicitly; the transcript fills the editable question box
+(speaking replaces the question only once text arrives); error codes map to
+messages that always offer typing (`speech-errors.ts`); `stop()` has a 3 s
+safety timeout in case a browser never fires `end`; speech is aborted on Cancel,
+Retake, page hide, `pagehide` and unmount; the Milestone 2 microphone test is
+stopped when speech starts so they never share the microphone. A Sarvam
+provider (Milestone 7) would add a second implementation of the same shape.
 
 - **Web Speech API (default when available).** `SpeechRecognition` /
   `webkitSpeechRecognition`. Support (MDN browser-compat-data, 2026-11-02):
@@ -278,11 +296,30 @@ Kept out of the LLM, implemented as pure, unit-tested TypeScript:
 
 ## Ask-flow states (Milestone 4)
 
-`idle` → `camera-ready` → `capturing` → `checking-quality` → `listening` (or
-`typing`) → `ready-to-send` → `sending` → `answering` (speaking) → back to
-`camera-ready`; plus `error` from any state. States are visible and announced.
-Leaving the page or hiding it cancels listening/sending/speaking and releases
-devices, as the Milestone 1–2 hooks already do.
+Implemented as a pure reducer in `src/lib/ask/ask-flow.ts` (unit-tested), which
+rejects invalid transitions by returning the same state object. Stored phases:
+`idle`, `capturing`, `image-captured`, `listening`, `question-ready`,
+`ready-to-submit`; the UI also shows `camera-active` (idle + live camera).
+
+```text
+idle/camera-active ─Capture→ capturing ─ok→ image-captured ⇄ question-ready
+                                │fail→ idle           │  ↑ typing / transcript
+                                                     ▼  │
+                          listening ⇄ (start/stop speaking)
+question-ready ─Ask→ ready-to-submit ─Edit→ question-ready
+Retake: any image state → idle (question kept)     Cancel: anything → idle (all cleared)
+```
+
+Guards: Capture needs a live camera and no image; Ask needs an image and a
+non-blank question and is rejected while listening or already prepared
+(duplicate-submission prevention); typing and speaking need an image. In
+Milestone 4 `ready-to-submit` is a local state that only prepares
+`{image blob, question, lang}` in memory and sends nothing; Milestone 5 turns it
+into the `/api/ask` request (adding `sending` / `answering`). Phase changes are
+announced through a polite live region; focus moves to the photo heading after
+capture, the "Request ready" heading after Ask, and the primary button after
+Retake/Cancel. Leaving or hiding the page aborts listening and releases devices
+(camera and microphone hooks), and `pagehide` also discards the photo.
 
 ## Failure handling checklist
 

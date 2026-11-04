@@ -18,8 +18,8 @@ Follow these instructions strictly.
    their project in Google AI Studio. Record sources and dates in the docs.
 5. State the scope and files expected to change, then implement **only** the
    current milestone from `docs/implementation-roadmap.md`.
-6. Run lint, type-check and build. Report exact commands and results. Stop and
-   wait for approval before the next milestone.
+6. Run lint, type-check, build and unit tests (`npm test`). Report exact commands
+   and results. Stop and wait for approval before the next milestone.
 
 ## General engineering requirements
 

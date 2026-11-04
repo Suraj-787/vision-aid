@@ -36,8 +36,8 @@ Languages targeted: English, Hindi, Kannada.
 | 1 Camera preview | ✅ | Reused for Tap-to-Ask capture |
 | 2 Audio primitives (PCM16) | ✅ | Kept for optional Live Mode / Sarvam reuse |
 | 3 Live token endpoint | ✅ | Kept for optional Live Mode; not used by Tap-to-Ask |
-| 4 Tap-to-Ask interface | next | Capture, Ask button, speech + text input |
-| 5 Gemini image understanding | | `POST /api/ask`, structured output, spoken answers |
+| 4 Tap-to-Ask interface | ✅ built, awaiting review | Capture one photo, speak or type a question, "ready" state; nothing sent |
+| 5 Gemini image understanding | next | `POST /api/ask`, structured output, spoken answers |
 | 6 Accessibility tools | | Text, expiry, currency, medicine labels |
 | 7 Multilingual | | en / hi / kn evaluation, optional Sarvam |
 | 8 Reliability and evaluation | | Quality checks, accuracy, real devices, demo |
@@ -76,7 +76,7 @@ Open `http://localhost:3000`. Camera and microphone require a secure context:
 localhost for development, HTTPS for phone testing (e.g. an ngrok tunnel;
 `next.config.ts` allows ngrok hostnames for dev assets).
 
-Checks: `npm run lint`, `npm run typecheck`, `npm run build`.
+Checks: `npm run lint`, `npm run typecheck`, `npm run build`, `npm test` (unit tests use Node's built-in runner with type stripping, so they need Node 22.6 or newer and add no dependency).
 
 ## Environment variables
 

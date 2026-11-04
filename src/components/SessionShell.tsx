@@ -1,7 +1,9 @@
 "use client";
 
+import { AskPanel } from "@/components/AskPanel";
 import { CameraPreview } from "@/components/CameraPreview";
 import { MicrophonePanel } from "@/components/MicrophonePanel";
+import { useAsk } from "@/hooks/useAsk";
 import { useCamera, type CameraStatus } from "@/hooks/useCamera";
 import { useMicrophone, type MicrophoneStatus } from "@/hooks/useMicrophone";
 import { SESSION_STATE_LABELS } from "@/lib/session-state";
@@ -29,47 +31,68 @@ const MIC_DEVICE_VALUE: Record<MicrophoneStatus, string> = {
   error: "Off (error)",
 };
 
-const buttonBase =
-  "min-h-12 rounded-lg border-2 px-5 py-3 text-base font-semibold aria-disabled:cursor-not-allowed aria-disabled:opacity-60";
-
 /**
- * Milestones 1-2: local camera preview and a local microphone test, controlled
- * independently. No frame capture, no audio recording, no network calls.
- * Buttons use aria-disabled (not `disabled`) so they stay
- * focusable and keyboard focus is not lost when their state changes.
+ * Tap-to-Ask, frontend only (Milestone 4): the camera preview (Milestone 1) feeds
+ * one captured still; the question is spoken (browser speech recognition) or
+ * typed; "Ask" prepares the request locally. Nothing is sent to any service.
+ *
+ * The Milestone 2 microphone test (PCM16) is kept as an optional diagnostic and
+ * is stopped automatically when speech input starts, so the two never compete
+ * for the microphone.
  */
 export function SessionShell() {
-  const { videoRef, status, error, start, stop } = useCamera();
+  const camera = useCamera();
   const microphone = useMicrophone();
+  const cameraActive = camera.status === "camera-ready";
 
-  const canStart = status === "idle" || status === "error";
-  const canStop = status === "requesting-permissions" || status === "camera-ready";
+  const ask = useAsk({
+    videoRef: camera.videoRef,
+    cameraActive,
+    onBeforeListen: () => {
+      if (microphone.status !== "idle") microphone.stop();
+    },
+  });
+
+  const listening = ask.phase === "listening";
+  const micValue = listening
+    ? "On (listening for your question)"
+    : MIC_DEVICE_VALUE[microphone.status];
 
   return (
     <section aria-labelledby="session-heading" className="space-y-4">
       <h2 id="session-heading" className="text-xl font-bold">
-        Session
+        Ask about a photo
       </h2>
 
       <p role="status" className="text-lg font-semibold">
-        Status: {SESSION_STATE_LABELS[status]}. {CAMERA_STATUS_TEXT[status]}
+        Status: {SESSION_STATE_LABELS[camera.status]}. {CAMERA_STATUS_TEXT[camera.status]}
       </p>
 
-      {error && (
+      {camera.error && (
         <p
           role="alert"
           className="rounded-lg border-2 border-warning-border bg-warning-bg p-3 text-warning-foreground"
         >
-          {error.message}
+          {camera.error.message}
         </p>
       )}
 
-      <CameraPreview videoRef={videoRef} status={status} />
+      {/* Stays mounted (the camera hook attaches the stream to its <video>); hidden while a photo is shown. */}
+      <div hidden={ask.image !== null}>
+        <CameraPreview videoRef={camera.videoRef} status={camera.status} />
+      </div>
+
+      <AskPanel
+        ask={ask}
+        cameraStatus={camera.status}
+        onStartCamera={() => void camera.start()}
+        onStopCamera={camera.stop}
+      />
 
       <dl className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         {[
-          { name: "Camera", value: CAMERA_DEVICE_VALUE[status] },
-          { name: "Microphone", value: MIC_DEVICE_VALUE[microphone.status] },
+          { name: "Camera", value: CAMERA_DEVICE_VALUE[camera.status] },
+          { name: "Microphone", value: micValue },
           { name: "AI connection", value: "Not connected" },
         ].map(({ name, value }) => (
           <div
@@ -82,32 +105,20 @@ export function SessionShell() {
         ))}
       </dl>
 
-      <div className="flex flex-col gap-3 sm:flex-row">
-        <button
-          type="button"
-          aria-disabled={!canStart}
-          onClick={() => canStart && void start()}
-          className={`${buttonBase} border-accent bg-accent text-accent-foreground`}
-        >
-          Start camera
-        </button>
-        <button
-          type="button"
-          aria-disabled={!canStop}
-          onClick={() => canStop && stop()}
-          className={`${buttonBase} border-border bg-background text-foreground`}
-        >
-          Stop camera
-        </button>
-      </div>
-
-      <p className="text-sm text-muted">
-        Starting the camera shows a preview on this device only. No camera
-        frames are captured or sent to any service. The microphone is separate
-        and stays off until you start it below.
-      </p>
-
-      <MicrophonePanel {...microphone} />
+      <details className="rounded-lg border border-border p-3">
+        <summary className="cursor-pointer font-semibold">
+          Microphone test (diagnostic, optional)
+        </summary>
+        <div className="mt-3">
+          <MicrophonePanel
+            {...microphone}
+            start={async () => {
+              ask.abortListening(); // speech input and the test must not share the microphone
+              await microphone.start();
+            }}
+          />
+        </div>
+      </details>
     </section>
   );
 }
