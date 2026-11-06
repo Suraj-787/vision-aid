@@ -13,6 +13,11 @@ export interface GeminiInput {
   question: string;
   /** Requested answer language (validated allow-list), or null/undefined to follow the question. */
   responseLanguage?: SupportedLang | null;
+  /**
+   * Aborted when the browser disconnects (Cancel, Retake, leaving the page). The
+   * upstream request is abandoned instead of being waited for.
+   */
+  signal?: AbortSignal;
 }
 
 export interface GeminiOutput {
@@ -44,7 +49,7 @@ export function createGeminiClient(options: GeminiClientOptions = {}): GeminiCli
   const timeoutMs = options.timeoutMs ?? DEFAULT_GEMINI_TIMEOUT_MS;
 
   return {
-    async generate({ apiKey, model, imageBase64, question, responseLanguage }) {
+    async generate({ apiKey, model, imageBase64, question, responseLanguage, signal }) {
       const ai = new GoogleGenAI({
         apiKey,
         httpOptions: {
@@ -70,7 +75,9 @@ export function createGeminiClient(options: GeminiClientOptions = {}): GeminiCli
           systemInstruction: buildSystemInstruction(responseLanguage ?? null),
           responseMimeType: "application/json",
           responseJsonSchema: RESPONSE_JSON_SCHEMA,
-          abortSignal: AbortSignal.timeout(timeoutMs),
+          abortSignal: signal
+            ? AbortSignal.any([AbortSignal.timeout(timeoutMs), signal])
+            : AbortSignal.timeout(timeoutMs),
         },
       });
 

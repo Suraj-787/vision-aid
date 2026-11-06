@@ -55,7 +55,8 @@ export function LanguageSelector({ ask }: { ask: AskController }) {
 
       <p id="language-help" className="text-sm text-muted">
         This sets the language your microphone listens for, the language VisionAid asks Google&apos;s
-        Gemini to answer in, and the voice that reads the answer. Typing always works.
+        Gemini to answer in, and the voice that reads the answer. A question written in Hindi or
+        Kannada letters is answered in that language whatever is selected here. Typing always works.
         {info.code !== "en-IN" && " Buttons, notices and the expiry and banknote checks stay in English."}
       </p>
       <p id="language-voice" className="text-sm">

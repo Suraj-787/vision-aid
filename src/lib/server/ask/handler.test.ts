@@ -610,3 +610,56 @@ describe("answer language and multilingual text (Milestone 7)", () => {
     assert.doesNotMatch(logged, /पैरासिटामोल|hi-IN|QSECRET/);
   });
 });
+
+describe("client disconnect (Cancel / Retake) frees the server slot (Milestone 8)", () => {
+  it("abandons the upstream call, answers nothing, and accepts the next question immediately", async () => {
+    let n = 0;
+    const h = harness((input) => {
+      n += 1;
+      if (n > 1) return Promise.resolve({ text: JSON.stringify(VALID_MODEL_OUTPUT), finishReason: "STOP" });
+      return new Promise((_resolve, reject) => {
+        input.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      });
+    });
+    const controller = new AbortController();
+    const first = handleAsk(new Request(valid(), { signal: controller.signal }), h.deps);
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(h.deps.inFlight.size, 1, "the first question holds the slot while it is running");
+
+    controller.abort();
+    const res = await first;
+    assert.equal(res.status, 499);
+    assert.equal(await res.text(), "", "nothing is sent for an abandoned question");
+    assert.equal(h.deps.inFlight.size, 0, "the slot is released as soon as the client is gone");
+
+    const second = await call(h, valid());
+    assert.equal(second.status, 200, "Ask again straight after Cancel is not refused as 'in progress'");
+    assert.equal(h.calls.length, 2, "exactly one Gemini call per question; the abandoned one is not retried");
+  });
+
+  it("an abandoned question is not reported as an upstream failure and logs no content", async () => {
+    const h = harness((input) => new Promise((_r, reject) => input.signal?.addEventListener("abort", () => reject(new DOMException("x", "AbortError")))));
+    const controller = new AbortController();
+    const pending = handleAsk(new Request(valid(), { signal: controller.signal }), h.deps);
+    await new Promise((r) => setTimeout(r, 10));
+    controller.abort();
+    await pending;
+    const logged = h.logs.join("\n");
+    assert.match(logged, /client disconnected/);
+    assert.doesNotMatch(logged, /upstream error|UPSTREAM_TIMEOUT|QSECRET|SECRETKEY/);
+  });
+
+  it("a real upstream timeout (client still connected) is still reported as a timeout", async () => {
+    const h = harness(async () => {
+      throw new DOMException("timed out", "TimeoutError");
+    });
+    const r = await call(h, valid());
+    assert.equal(errorCode(r), "UPSTREAM_TIMEOUT");
+  });
+
+  it("passes the request's abort signal to Gemini", async () => {
+    const h = harness();
+    await call(h, valid());
+    assert.ok(h.calls[0].signal instanceof AbortSignal);
+  });
+});

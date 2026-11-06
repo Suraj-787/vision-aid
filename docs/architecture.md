@@ -26,7 +26,7 @@ built: see "Spoken output").
  2. User taps "Capture photo" → capture ONE still (video -> canvas)
  3. Advisory quality checks on the client: too dark? too blurry? (never blocks)
  4. User speaks (Web Speech API) or types the question — typing always available
- 5. Downscale (≤ 768 px) + JPEG-encode the still (done at capture, kept in memory)
+ 5. Downscale (≤ 1280 px) + JPEG-encode the still (done at capture, kept in memory)
  6. User taps "Ask" → POST /api/ask {image, question}  ────────────┐
                                                                   ▼
                              Server (Next.js route, Node runtime)
@@ -104,8 +104,10 @@ Planned file names are proposals; they are fixed at the start of each milestone.
    - **Advice only.** The thresholds are uncalibrated starting points
      (`DEFAULT_QUALITY_THRESHOLDS`), so a flagged photo is never rejected or
      blocked: the user sees a tip and may retake or continue.
-   - Blocking an image is reconsidered in Milestone 8, only for a check shown to
-     be reliable on real devices.
+   - Milestone 8 decision: the checks stay advisory. They have not been
+     calibrated on physical devices, so none is reliable enough to block a photo.
+     If the browser cannot read canvas pixels (privacy modes) the analysis is
+     skipped, with no warning and no failure (`unknownQualityReport`).
 4. **Downscale + encode (implemented in Milestone 4)** — `src/lib/image/capture.ts`
    draws the frame once to a canvas at a size from `fitWithin` (longest side ≤
    768 px, aspect ratio kept, never upscaled) and encodes `image/jpeg` at quality
@@ -234,13 +236,49 @@ phones. Integrating it would add a third-party processor receiving the user's
 voice, so it needs explicit approval, verified API/pricing/retention details and a
 privacy-notice change first.
 
+## Security headers and request lifecycle (Milestone 8)
+
+**Headers** (`src/lib/security-headers.ts`, applied to every route in production by
+`next.config.ts`; not in `next dev`, which needs eval and websockets):
+`Content-Security-Policy` (`connect-src 'self'`, `frame-ancestors 'none'`,
+`object-src 'none'`, `base-uri`/`form-action 'self'`, `img-src`/`media-src` allow
+`blob:` for the photo preview), `X-Content-Type-Options: nosniff`,
+`X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` and `Permissions-Policy`
+(camera and microphone for this site only; geolocation, payment, USB, serial and
+Bluetooth off). Because `connect-src` is `'self'`, the page cannot send the photo,
+question or answer to any other host even if a script were injected; only the
+server talks to Google. **Limits:** `script-src` and `style-src` keep
+`'unsafe-inline'` (Next.js inlines its bootstrap scripts and the pages are
+statically generated, so there is no per-request nonce), so the CSP does not stop
+all script injection. HSTS is not set here because it belongs to the TLS-terminating
+host; set it there. `/api/*` responses additionally carry `Cache-Control: no-store`
+and `X-Content-Type-Options`.
+
+**Cancel and disconnect.** If the browser disconnects while Gemini is being asked
+(Cancel, Retake, closing the page), Next.js aborts `request.signal`; the handler
+passes it to the Gemini call, abandons the upstream request, logs only
+`[ask] client disconnected before the answer`, replies with an empty `499` and
+releases the one-at-a-time slot at once. Before Milestone 8 the slot stayed held
+until Gemini answered (up to the 30 s timeout), so Cancel followed by Ask could be
+refused as "already in progress". Whether Google still counts an abandoned request
+against quota is not known; there are no retries either way.
+
+**Known deployment limits (unchanged, document before deploying):** the rate
+limiter and the one-at-a-time guard are in memory, per server process (a serverless
+host runs several processes, each with its own counters); the client key comes from
+`X-Forwarded-For`/`X-Real-IP`, which only a trusted proxy makes reliable, and falls
+back to a single shared key `local` when neither header exists (then all users
+share one limit). Same-origin checking relies on `Origin` matching `Host` or
+`X-Forwarded-Host`; non-browser clients can set these themselves, which is why the
+rate limit and server-side validation exist.
+
 ## Server: `POST /api/ask` (Milestone 5, implemented)
 
 Full reference: `docs/ask-api.md`. Summary:
 
 **Request** — JSON `{ "image": "<base64 JPEG>", "question": "<text>" }`, nothing
 else (unknown fields are rejected, so a caller cannot pass a model or
-instructions). The browser sends the photo it already captured (≤ 768 px JPEG);
+instructions). The browser sends the photo it already captured (≤ 1280 px JPEG);
 it never re-captures on Ask.
 
 **Validation** (`src/lib/server/ask/validate.ts`, pure and unit-tested) — origin

@@ -117,6 +117,7 @@ async function handleAskUnsafe(request: Request, deps: AskDeps): Promise<Respons
       imageBase64,
       question,
       responseLanguage,
+      signal: request.signal,
     });
 
     if (output.blockReason) {
@@ -149,6 +150,13 @@ async function handleAskUnsafe(request: Request, deps: AskDeps): Promise<Respons
     );
     return Response.json(result, { status: 200, headers: SAFE_HEADERS });
   } catch (err) {
+    if (request.signal.aborted) {
+      // The browser went away (Cancel, Retake, closed page). Nobody is waiting
+      // for this reply, so it is not an upstream failure: the slot is released
+      // below and the next question can be asked straight away.
+      deps.log("[ask] client disconnected before the answer");
+      return new Response(null, { status: 499, headers: SAFE_HEADERS });
+    }
     const code = classifyUpstreamError(err);
     deps.log(`[ask] upstream error: ${describeUpstreamError(err)}`);
     return failure(code, deps, code === "UPSTREAM_QUOTA" ? { "Retry-After": "60" } : {});

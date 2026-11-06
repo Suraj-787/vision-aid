@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { SECURITY_HEADERS } from "./src/lib/security-headers";
 
 const nextConfig: NextConfig = {
   // Dev only: Next blocks dev resources (client JS, HMR) from any hostname other
@@ -10,6 +11,11 @@ const nextConfig: NextConfig = {
     "*.ngrok.app",
     "*.ngrok.io",
   ],
+  // Production only: the development server needs eval and websockets for hot reload.
+  async headers() {
+    if (process.env.NODE_ENV !== "production") return [];
+    return [{ source: "/:path*", headers: SECURITY_HEADERS.map((h) => ({ ...h })) }];
+  },
   turbopack: {
     rules: {
       "*.css": {

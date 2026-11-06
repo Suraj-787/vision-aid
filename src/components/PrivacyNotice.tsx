@@ -16,7 +16,10 @@ export function PrivacyNotice() {
       </p>
       <p className="mt-2">
         VisionAid itself does not store or log your photo, question or answer,
-        and discards them when you retake, cancel or leave the page. Google
+        and discards them when you retake, cancel or leave the page. Its server
+        keeps only short status lines (how long a request took, the photo&apos;s
+        size and the kind of question, never their content), and a hosting
+        provider may log basic request details such as the time and network address. Google
         handles what it receives under its own terms and may keep it for a
         time; on the free tier it may be used to improve Google&apos;s
         products. Check Google&apos;s current terms before using VisionAid with

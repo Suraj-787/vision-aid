@@ -1,5 +1,6 @@
-import { fitWithin } from "@/lib/image/scale";
-import { analyzeImageQuality, type QualityReport } from "@/lib/image/quality";
+import { fitWithin, type Size } from "@/lib/image/scale";
+import { encodeWithinLimit, MAX_SEND_IMAGE_BYTES, qualitySteps } from "@/lib/image/encode";
+import { analyzeImageQuality, unknownQualityReport, type QualityReport } from "@/lib/image/quality";
 
 export interface CaptureOptions {
   /** Longest side of the output image in pixels. Never upscales. */
@@ -10,10 +11,15 @@ export interface CaptureOptions {
   analysisDimension: number;
 }
 
-/** Starting points; tuned on real devices in Milestone 8. */
+/**
+ * Chosen for readable small print (expiry dates, medicine labels) while staying
+ * far below the server's 2 MB limit: a 1280 px photo is typically a few hundred
+ * KB. Gemini bills images in 768 px tiles, so this costs about four tiles. These
+ * values are reasoned, not calibrated on physical devices (see the checklist).
+ */
 export const DEFAULT_CAPTURE_OPTIONS: CaptureOptions = {
-  maxDimension: 768,
-  jpegQuality: 0.8,
+  maxDimension: 1280,
+  jpegQuality: 0.85,
   analysisDimension: 256,
 };
 
@@ -75,46 +81,59 @@ export async function captureStill(
 
   const size = fitWithin(sourceWidth, sourceHeight, opts.maxDimension);
   const canvas = document.createElement("canvas");
-  canvas.width = size.width;
-  canvas.height = size.height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    releaseCanvas(canvas);
-    throw new CaptureError("unsupported");
-  }
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(video, 0, 0, size.width, size.height);
+  try {
+    canvas.width = size.width;
+    canvas.height = size.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new CaptureError("unsupported");
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(video, 0, 0, size.width, size.height);
 
-  let quality: QualityReport;
+    const quality = analyseQuality(canvas, size, opts.analysisDimension);
+
+    // Re-encodes at a lower quality if the first JPEG is too large to send.
+    const blob = await encodeWithinLimit(
+      (q) => new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", q)),
+      MAX_SEND_IMAGE_BYTES,
+      qualitySteps(opts.jpegQuality),
+    );
+    if (!blob) throw new CaptureError("encode-failed");
+
+    return {
+      blob,
+      url: URL.createObjectURL(blob),
+      width: size.width,
+      height: size.height,
+      bytes: blob.size,
+      quality,
+    };
+  } finally {
+    releaseCanvas(canvas); // also on every error path
+  }
+}
+
+/**
+ * Advisory brightness/blur analysis on a small copy. It is best-effort: if the
+ * browser cannot read canvas pixels (privacy modes block or alter it) the photo
+ * is still usable, so a failure here must never fail the capture.
+ */
+function analyseQuality(canvas: HTMLCanvasElement, size: Size, analysisDimension: number): QualityReport {
   const small = document.createElement("canvas");
   try {
-    const analysisSize = fitWithin(size.width, size.height, opts.analysisDimension);
+    const analysisSize = fitWithin(size.width, size.height, analysisDimension);
     small.width = analysisSize.width;
     small.height = analysisSize.height;
     const sctx = small.getContext("2d", { willReadFrequently: true });
-    if (!sctx) throw new CaptureError("unsupported");
+    if (!sctx) return unknownQualityReport();
     sctx.drawImage(canvas, 0, 0, analysisSize.width, analysisSize.height);
     const pixels = sctx.getImageData(0, 0, analysisSize.width, analysisSize.height);
-    quality = analyzeImageQuality(pixels.data, analysisSize.width, analysisSize.height);
+    return analyzeImageQuality(pixels.data, analysisSize.width, analysisSize.height);
+  } catch {
+    return unknownQualityReport();
   } finally {
     releaseCanvas(small);
   }
-
-  const blob = await new Promise<Blob | null>((resolve) =>
-    canvas.toBlob(resolve, "image/jpeg", opts.jpegQuality),
-  );
-  releaseCanvas(canvas);
-  if (!blob) throw new CaptureError("encode-failed");
-
-  return {
-    blob,
-    url: URL.createObjectURL(blob),
-    width: size.width,
-    height: size.height,
-    bytes: blob.size,
-    quality,
-  };
 }
 
 export function toCaptureError(err: unknown): { kind: CaptureErrorKind; message: string } {

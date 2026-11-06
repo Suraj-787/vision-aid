@@ -108,7 +108,7 @@ export function SessionShell() {
       </dl>
 
       <details className="rounded-lg border border-border p-3">
-        <summary className="cursor-pointer font-semibold">
+        <summary className="flex min-h-11 cursor-pointer items-center font-semibold">
           Microphone test (diagnostic, optional)
         </summary>
         <div className="mt-3">

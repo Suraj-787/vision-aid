@@ -258,3 +258,26 @@ describe("answer language in the Gemini request (Milestone 7)", () => {
     assert.doesNotMatch(JSON.stringify(body.contents), /Hindi/); // the language never goes into the user turn
   });
 });
+
+describe("abandoning a request (Milestone 8)", () => {
+  it("aborting the signal closes the HTTP request to Gemini and rejects promptly, with no retry", async () => {
+    let closed = false;
+    respond = (req) => {
+      req.on("close", () => {
+        closed = true;
+      });
+      // never answers
+    };
+    const controller = new AbortController();
+    const pending = createGeminiClient({ baseUrl, timeoutMs: 20_000 }).generate({ ...input, signal: controller.signal });
+    const settled = pending.then(() => "resolved", (err: Error) => err.name);
+    await new Promise((r) => setTimeout(r, 100));
+    controller.abort();
+    const outcome = await Promise.race([settled, new Promise((r) => setTimeout(() => r("still waiting"), 3000))]);
+    assert.notEqual(outcome, "still waiting", "generate() must not wait for Gemini after the client left");
+    assert.notEqual(outcome, "resolved");
+    for (let i = 0; i < 20 && !closed; i++) await new Promise((r) => setTimeout(r, 50));
+    assert.equal(closed, true, "the connection to the fake Gemini server was closed");
+    assert.equal(requests.length, 1, "exactly one attempt");
+  });
+});

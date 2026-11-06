@@ -156,18 +156,35 @@ voice selection, playback lifecycle, response-language handling and multilingual
 text preservation; browser tests with mocked speech APIs. **Acceptance (physical,
 open):** the manual language/device matrix in the checklist has not been run.
 
-## Milestone 8 — Reliability and evaluation
-- Calibrate image-quality checks on real devices; decide block vs warn thresholds.
-- Error, network and quota handling review; offline and slow-network behaviour.
-- Accuracy evaluation: OCR, expiry extraction, currency, scene answers,
-  hallucination rate, safety refusals.
-- Real-device testing (iOS Safari, Android Chrome; others as available).
-- Accessibility testing with VoiceOver / TalkBack and keyboard; speech vs screen-reader setting.
-- Latency and token-usage measurements; image size tuning.
-- Final supervised demo script and report with known limitations.
+## Milestone 8 — Final validation, reliability and production readiness ✅ (implemented 2026-11-06; awaiting review)
 
-**Acceptance:** Reproducible supervised demo; evaluation results and
-limitations documented.
+Audit first, then only verified fixes. Audited: camera/microphone lifecycle,
+image pipeline, speech input/output, accessibility (axe-core, tap targets,
+contrast, overflow, focus, `lang`), security headers and the client–server flow,
+`/api/ask` error paths, multilingual flows, memory/resources and the client bundle.
+
+Fixed:
+- **Photo resolution.** The camera was asked for no size (phones then give ~640 × 480)
+  and the photo was capped at 768 px, hurting small print. Now 1920 × 1080 ideal,
+  photo ≤ 1280 px at quality 0.85, with a size-limited re-encode so a photo is never
+  refused for size after upload.
+- **Quality analysis can no longer fail a capture** (blocked canvas reads); tips stay advisory.
+- **Cancel / Retake no longer holds the server slot** for up to 30 s; the upstream
+  call is abandoned on disconnect.
+- **Security headers** (CSP with `connect-src 'self'`, framing, nosniff, referrer,
+  permissions policy) in production.
+- Small accessibility fixes (44 px diagnostic `summary`, invalid `aria-label` on a plain `div`).
+- Documentation corrected (log line description, privacy notice, `.env.example` Sarvam note).
+- Browser/accessibility/lifecycle test scripts added to the repo (`scripts/e2e/`).
+
+Not changed on purpose: the response schema, expiry and currency rules, safety
+filters, Live Mode (still disabled by default), the Tap-to-Ask architecture, quality
+thresholds (cannot be calibrated without devices), the logging of the question kind.
+
+**Not done and still required:** physical-device testing (see "Milestone 8" in
+`docs/testing-checklist.md`); calibration of image size/quality and blur
+thresholds; native-speaker review of Hindi/Kannada safety wording; deciding how to
+run the rate limiter in production (in-memory today).
 
 ## Optional future extension — Gemini Live Mode
 - Continuous voice conversation using the existing ephemeral-token endpoint and

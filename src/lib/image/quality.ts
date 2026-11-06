@@ -46,6 +46,15 @@ export interface QualityReport {
   issues: QualityIssue[];
 }
 
+/**
+ * What to report when the analysis could not run (for example a browser that
+ * blocks reading canvas pixels). It has no issues, so the photo is still usable:
+ * the checks are advice, never a requirement.
+ */
+export function unknownQualityReport(): QualityReport {
+  return { meanLuminance: 128, darkFraction: 0, brightFraction: 0, sharpness: null, issues: [] };
+}
+
 /** User-facing advice for each issue. Advisory wording: never "rejected". */
 export const QUALITY_MESSAGES: Record<QualityIssue, string> = {
   too_dark: "Image looks too dark. Please improve the lighting and try again.",

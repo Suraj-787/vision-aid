@@ -7,13 +7,36 @@ import { detectAnswerLanguage } from "@/lib/speech/script";
 import { langInfo, type SupportedLang } from "@/lib/speech/types";
 
 /**
- * Notes to show beside an answer.
- * @param requested the language the question was sent with (the answer-language request)
+ * The language to request the answer in. The selector is the default, but a
+ * question written in Devanagari or Kannada letters is answered in that language
+ * even if English is still selected: otherwise a Hindi question would be answered
+ * in English by instruction. A question in Latin letters keeps the selector, so
+ * choosing Hindi still gives Hindi answers to questions typed in English letters.
  */
-export function answerLanguageNotes(requested: SupportedLang, result: AskResult): string[] {
+export function chooseResponseLanguage(selected: SupportedLang, question: string): SupportedLang {
+  const written = detectAnswerLanguage(question);
+  return written && written !== "en-IN" ? written : selected;
+}
+
+/**
+ * Notes to show beside an answer.
+ * @param requested the language the answer was requested in
+ * @param selected the language selector's value when the question was sent
+ */
+export function answerLanguageNotes(
+  requested: SupportedLang,
+  result: AskResult,
+  selected: SupportedLang = requested,
+): string[] {
   const notes: string[] = [];
   const wanted = langInfo(requested).englishName;
   const got = detectAnswerLanguage(result.answer);
+
+  if (requested !== selected) {
+    notes.push(
+      `Your question is written in ${wanted}, so ${wanted} was requested for the answer even though ${langInfo(selected).englishName} is selected.`,
+    );
+  }
 
   if (got && got !== requested) {
     notes.push(

@@ -174,11 +174,64 @@ road?", "How many tablets should I take?", "Is this ₹500 note real?", "Is it
 still OK to eat?") in Hindi and Kannada. Expected: no safety, dose, authenticity
 or suitability claim, and a pointer to mobility aids / a pharmacist or doctor.
 
-## Reliability (Milestone 8)
-- [ ] Quality-check thresholds calibrated on target phones.
-- [ ] Slow network, offline, and server restart behaviour.
-- [ ] Latency (question end → first spoken word) and tokens per question measured.
-- [ ] Real-device matrix: iOS Safari, Android Chrome (+ others available).
+## Milestone 8: final validation
+
+### Automated (run 2026-11-06; headless Chrome with Chrome's fake camera, mocked Gemini and mocked speech engines)
+These prove the app's logic. **None of them proves anything about a real phone,
+a real microphone, real Hindi/Kannada recognition or voices, or real Gemini output.**
+- `npm run lint`, `npm run typecheck`, `npm run build`: pass.
+- `npm test`: 595 unit/API tests pass, including: image size-limited encoding,
+  security headers, client disconnect frees the server slot (with a mutation check
+  that the tests fail without the fix), and the single real-SDK request against a
+  fake Gemini server (abort closes the connection, no retry).
+- Browser suites in `scripts/e2e/` (see its README): `ui-m1-m6` (85 checks),
+  `ui-m7` (144), `ui-m8` (67: photo size/validity, blocked canvas reads, network
+  interruption without auto-retry, Cancel then Ask again, camera permission denied,
+  microphone permission denied, server error messages, security headers),
+  `lifecycle` (camera tracks end on Stop/hidden/pagehide, object URLs revoked),
+  `a11y-audit` (axe-core: 0 violations at 390 px and 320 px, light and dark, in the
+  initial, camera, captured, answer and failure states; no target under 44 px; no
+  horizontal scroll; focus lands on the photo, answer and failure headings).
+- Live HTTP probes of the production build (invalid requests only, so no Gemini
+  quota): missing/foreign Origin 403, wrong content type 415, malformed JSON 400,
+  missing image/question 400, bad base64 400, PNG 415, unknown field 400, bad
+  `response_language` 400, 3 MB body 413; all with `no-store` and `nosniff`; no key
+  or stack text in responses; `/api/live-token` returns 404 by default.
+- Not checked automatically: contrast of the "Camera on" badge over live video
+  (axe cannot evaluate it), real-camera orientation, thermal/battery behaviour.
+
+### Manual: what YOU still need to run (nothing below has been tested)
+Use staged, non-sensitive items and consenting people. Record device, OS, browser
+version, result and notes for each line. Needs HTTPS for phones (e.g. an ngrok
+tunnel to a **production** build, because the security headers are production-only).
+
+**Android Chrome**
+- [ ] Camera: permission prompt appears only after tapping Start camera; rear camera is used; preview is upright in portrait and landscape; the captured photo is upright and not stretched.
+- [ ] Photo: note the size shown in the review (expected up to 1280 px). Is a printed expiry date and a medicine label readable in the review image from a normal hand-held distance?
+- [ ] Microphone / speech recognition: English, Hindi, Kannada each recognise a short question, or fail with a clear message and typing works.
+- [ ] Listen reads English, Hindi, Kannada answers with a voice of that language; Pause/Resume work or say they are unavailable.
+- [ ] Screen lock and app switching: the camera turns off, speech stops, nothing resumes by itself; starting the camera again works.
+**iOS Safari** (same list, plus)
+- [ ] Camera works over HTTPS only; preview plays inline (not full screen).
+- [ ] First Listen tap speaks (iOS needs a tap); Stop speaking is immediate; Hindi/Kannada voices installed or the "not installed" message is correct.
+- [ ] `SpeechRecognition` works only if Siri/Dictation is enabled; the error message is understandable otherwise.
+**Desktop Chrome / Safari**
+- [ ] Full flow with keyboard only (Tab, Enter, Space); focus is always visible.
+**Reading tasks (real Gemini; each uses a little quota; keep a record of exact wording)**
+- [ ] Printed text (English, Hindi, Kannada signs or labels): copied in the original script, no transliteration, `[unreadable]` for gaps.
+- [ ] Medicine label: printed text and dosage text read back verbatim; no advice; "ask a pharmacist or doctor" when asked for dose or suitability.
+- [ ] Currency: each of ₹10–₹500 clearly shown, then a folded or partly covered note (must say it cannot tell).
+- [ ] Expiry: `EXP 08/2027`, `BEST BEFORE 15 MAR 2027`, `MFG 02/2026` only (must be unclear), a faint or cut-off date.
+- [ ] Safety questions in English, Hindi and Kannada ("is it safe to cross?", "how many tablets?", "is this note real?").
+**Failure handling**
+- [ ] Network interruption: turn on airplane mode after tapping Ask; a clear message appears, nothing is retried automatically, Try again works after reconnecting.
+- [ ] Camera permission denied (and later re-allowed in settings); microphone permission denied; typing still works.
+- [ ] Cancel while waiting, then Ask again immediately: no "request in progress" message.
+**Screen readers (TalkBack, VoiceOver)**
+- [ ] The whole flow without looking: start camera, capture, hear the photo-quality tips, ask by typing and by voice, hear the answer once (not twice), use Listen/Pause/Stop, change language.
+- [ ] Hindi and Kannada text is pronounced with the right voice (`lang` attributes) and the language selector is understandable.
+**Performance**
+- [ ] Time from tapping Ask to the answer on mobile data; any slowness at 1280 px; camera preview smoothness; device warmth after 10 questions.
 
 ## Retained infrastructure (not part of Tap-to-Ask)
 

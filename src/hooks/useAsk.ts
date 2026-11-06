@@ -20,7 +20,7 @@ import type { AskResult } from "@/lib/ask/ask-result";
 import { devLog } from "@/lib/dev-log";
 import { captureStill, toCaptureError, type CapturedImage } from "@/lib/image/capture";
 import { describeQuality } from "@/lib/image/quality";
-import { answerLanguageNotes } from "@/lib/speech/answer-language";
+import { answerLanguageNotes, chooseResponseLanguage } from "@/lib/speech/answer-language";
 import { DEFAULT_LANG, type SupportedLang } from "@/lib/speech/types";
 
 /** What a screen reader says when an answer arrives: the answer, plus the app's own checks. */
@@ -58,6 +58,7 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
   const [lang, setLang] = useState<SupportedLang>(DEFAULT_LANG);
   // The answer language that was sent with the current answer (the selector may change afterwards).
   const [answerLang, setAnswerLang] = useState<SupportedLang>(DEFAULT_LANG);
+  const [answerSelectedLang, setAnswerSelectedLang] = useState<SupportedLang>(DEFAULT_LANG);
   const [announcement, setAnnouncement] = useState("");
 
   const speech = useSpeechInput();
@@ -221,7 +222,9 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
       if (!captured || !(kind === "ask" ? canAsk(flow) : canRetry(flow))) return;
 
       requestInFlightRef.current = true;
-      setAnswerLang(lang);
+      const responseLanguage = chooseResponseLanguage(lang, flow.question);
+      setAnswerLang(responseLanguage);
+      setAnswerSelectedLang(lang);
       const id = ++requestIdRef.current;
       const controller = new AbortController();
       requestAbortRef.current = controller;
@@ -233,7 +236,7 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
       void postAsk({
         image: captured.blob,
         question: flow.question.trim(),
-        responseLanguage: lang,
+        responseLanguage,
         signal: controller.signal,
       }).then((outcome) => {
         // Cancelled, retaken, replaced by a newer request, or unmounted: ignore.
@@ -322,7 +325,7 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
     result,
     sendError,
     answerLang,
-    answerLanguageNotes: result ? answerLanguageNotes(answerLang, result) : [],
+    answerLanguageNotes: result ? answerLanguageNotes(answerLang, result, answerSelectedLang) : [],
     speech: {
       supported: speech.supported,
       error: speech.error,

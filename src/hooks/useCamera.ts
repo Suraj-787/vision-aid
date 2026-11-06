@@ -92,8 +92,10 @@ export function useCamera() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        // Video only: the microphone is never requested in this milestone.
-        video: { facingMode: { ideal: "environment" } },
+        // Video only: the microphone is never requested here. Without a size,
+        // phones usually return a 640x480 stream, too small for fine print;
+        // these are ideals, so a device that cannot match them still works.
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
         audio: false,
       });
 

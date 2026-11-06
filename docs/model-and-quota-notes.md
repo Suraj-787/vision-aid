@@ -42,7 +42,11 @@ still unknown.
 - Tokens: 258 if both sides ≤ 384 px; larger images are tiled into 768 × 768
   tiles at 258 tokens each (roughly: crop unit = floor(min(w, h) / 1.5)).
 - `media_resolution` (Gemini 3+) sets the maximum tokens per image; higher
-  helps fine text but costs tokens and latency. Tune in Milestone 8.
+  helps fine text but costs tokens and latency. It is not set by VisionAid.
+- Milestone 8 sends photos up to 1280 px on the longest side (about four tiles,
+  roughly 1000 input tokens, by the tiling rule above) instead of 768 px (one
+  tile). This is reasoned from the documentation, not measured: check latency,
+  token use and cost for your project, and OCR accuracy on real labels.
 - Inline data limit: 100 MB per request (50 MB for PDFs). Our images are far smaller.
 
 ### Observed availability (2026-11-05, point in time only)

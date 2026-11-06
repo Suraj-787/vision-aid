@@ -270,6 +270,12 @@ be", and never rely on it for anything important.
   language reliably. Client text never enters the instruction, the user turn is
   unchanged, and the request is still one `generateContent` call. No separate
   translation call is made.
+- **Which language is requested.** The browser sends the selector's language,
+  except that a question written in Devanagari or Kannada letters requests that
+  language even if English is still selected (`chooseResponseLanguage`); without
+  this, a Hindi question asked with the selector on its English default was
+  answered in English by instruction. The interface says when the question
+  overrode the selector. A question typed in English letters keeps the selector.
 - The directive covers only the model's own words. JSON keys, the `intent`,
   `confidence` and `expiry_kind` values and everything copied from the photo keep
   their original form and script, and every safety limit applies in every language.
@@ -338,6 +344,14 @@ confirmed. The sentence guards are pattern matching: they can miss unusual
 phrasings, and can remove a harmless sentence (for example a sentence quoting a
 sign that says "safe to cross"). Nothing here guarantees accurate expiry or
 banknote identification.
+
+## Cancelled requests (Milestone 8)
+
+When the browser disconnects before the answer (Cancel, Retake, closing the page)
+the server abandons the Gemini request, frees the client's slot immediately, logs
+`[ask] client disconnected before the answer` and returns an empty `499`. The
+browser has already discarded the reply, so nothing is shown. This is not counted
+as an upstream error and nothing is retried.
 
 ## Known limitations and edge cases
 
@@ -435,7 +449,7 @@ the request and in browser memory until Retake, Cancel, leaving the page or
 unmount. Nothing is written to a database, file, localStorage, sessionStorage,
 IndexedDB or cookies; responses are `Cache-Control: no-store`; and image data,
 base64, questions, transcripts, model output, keys and tokens are never logged
-(server log lines are fixed event strings such as `[ask] answered in 812 ms`).
+(server log lines are short event strings such as `[ask] answered in 812 ms (image 41 KB, intent expiry_date)`: timing, the photo's size and the kind of question, never their content; a hosting provider may also log basic request details such as time and network address).
 
 ## Testing without real API calls
 

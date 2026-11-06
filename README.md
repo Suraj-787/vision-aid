@@ -67,7 +67,7 @@ What to expect, honestly:
 | 5 Gemini image understanding | ✅ | `POST /api/ask` -> one Gemini request -> validated answer shown as text |
 | 6 Structured processing and deterministic tools | ✅ built, awaiting review | Intent, confidence, expiry check, banknote gating, safety guards |
 | 7 Voice interaction and languages | ✅ built, awaiting review | Listen/Pause/Stop, en / hi / kn selector, `response_language`, multilingual print rules; physical-device tests still to do; Sarvam not integrated |
-| 8 Reliability and evaluation | | Quality checks, accuracy, real devices, demo |
+| 8 Final validation and production readiness | ✅ built, awaiting review | Audit + fixes: sharper photos, Cancel frees the server slot, security headers, browser/a11y test scripts. **Physical-device testing still to do** |
 
 Work proceeds one milestone at a time (see `AGENTS.md`, `docs/implementation-roadmap.md`).
 
@@ -106,6 +106,8 @@ tapping Ask shows a clear configuration error. `.env` works as well as `.env.loc
 Open `http://localhost:3000`. Camera and microphone require a secure context:
 localhost for development, HTTPS for phone testing (e.g. an ngrok tunnel;
 `next.config.ts` allows ngrok hostnames for dev assets).
+
+Browser, accessibility and lifecycle tests (headless Chrome, mocked Gemini and speech): `scripts/e2e/README.md`.
 
 Checks: `npm run lint`, `npm run typecheck`, `npm run build`, `npm test` (unit tests use Node's built-in runner with type stripping, so they need Node 22.6 or newer and add no dependency). The tests never call the real Gemini API: see "Testing without real API calls" in `docs/ask-api.md`.
 

@@ -208,7 +208,7 @@ export function AnswerView({ result, onAskAnother, output, onListen, languageNot
       )}
 
       {result.adjustments.length > 0 && (
-        <div className="rounded-lg border border-border p-3 text-sm" aria-label="Changes VisionAid made to the AI's reply">
+        <div role="group" className="rounded-lg border border-border p-3 text-sm" aria-label="Changes VisionAid made to the AI's reply">
           <p className="font-semibold">Changes VisionAid made</p>
           <ul className="list-disc space-y-1 pl-5">
             {result.adjustments.map((code) => (
