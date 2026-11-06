@@ -95,6 +95,13 @@ an icon and text. Icons are Lucide (ISC), copied as path data into `Icon.tsx`
   and stays in view while the question and then the answer use the right.
 - Content width is capped at 64 rem.
 
+## Accessibility additions (Milestone 9)
+
+A visible step heading ("Step 1 of 3: Take a photo") sits above the stage; *Accessibility settings* is a
+collapsed card at the top whose heading shows the current mode; in voice-guided mode or with commands on, a
+*Voice controls* card (Stop VisionAid voice, Say a command) appears in the same place every time. They use
+the existing card, button, callout and chip styles. See `docs/accessibility.md`.
+
 ## What was removed or moved
 
 | Before | Now |

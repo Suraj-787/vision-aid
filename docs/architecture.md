@@ -193,7 +193,7 @@ status messages ("Paused.", "Stopped reading.") and never repeat the answer; the
 live region is cleared before playback so a repeated message is announced again.
 
 **Languages.** `en-IN`, `hi-IN`, `kn-IN` (`lib/speech/types.ts`). One selector
-(`components/LanguageSelector.tsx`, not remembered: nothing is stored) sets (1) the
+(`components/LanguageSelector.tsx`; the language is not remembered, unlike the three accessibility settings) sets (1) the
 `lang` of speech recognition, (2) `response_language` sent with the question
 (`docs/ask-api.md`), (3) which voice availability message is shown. Reading a
 reply picks voices from the reply's own script, not from the selector, so an
@@ -271,6 +271,19 @@ back to a single shared key `local` when neither header exists (then all users
 share one limit). Same-origin checking relies on `Origin` matching `Host` or
 `X-Forwarded-Host`; non-browser clients can set these themselves, which is why the
 rate limit and server-side validation exist.
+
+## Accessibility architecture (Milestone 9)
+
+Full description, announcement contract and limits: `docs/accessibility.md`. In short:
+- `lib/a11y/` (pure, unit-tested): `announcer.ts` (dedupe and re-announce for the one live region),
+  `messages.ts` (what a screen reader hears), `preferences.ts` (the three saved choices, strict parsing,
+  injectable storage and a tiny store). `lib/guidance/messages.ts` (spoken prompts in en/hi/kn),
+  `lib/commands/voice-commands.ts` (English command parser and step rules).
+- `hooks/useAnnouncer.ts`, `hooks/useA11yPrefs.ts`; `hooks/useSpeechOutput.ts` now speaks both answers and
+  guidance through the **one** `SpeechPlayer` (`say()` vs `listen()`), so nothing overlaps; `hooks/useAsk.ts`
+  coordinates focus requests, guidance, prompt-then-listen, automatic reading, Escape and the one-shot command
+  listener, which reuses the single `useSpeechInput` recognition session.
+- Components: `AccessibilitySettings`, `VoiceBar`; step heading in `SessionShell`; camera `group` in `CameraPreview`.
 
 ## Server: `POST /api/ask` (Milestone 5, implemented)
 

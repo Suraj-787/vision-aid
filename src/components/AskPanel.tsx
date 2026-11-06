@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { ActionButton } from "@/components/ActionButton";
 import { AnswerView } from "@/components/AnswerView";
 import { SendFailure, SendingView } from "@/components/AskProgress";
@@ -10,6 +10,7 @@ import { LanguageSelector } from "@/components/LanguageSelector";
 import { QuestionInput } from "@/components/QuestionInput";
 import type { useAsk } from "@/hooks/useAsk";
 import type { CameraStatus } from "@/hooks/useCamera";
+import { blockedActionAnnouncement } from "@/lib/a11y/messages";
 
 type AskController = ReturnType<typeof useAsk>;
 
@@ -33,10 +34,19 @@ interface AskPanelProps {
  */
 export function AskPanel({ ask, cameraStatus, onStartCamera, onStopCamera, preview }: AskPanelProps) {
   const primaryRef = useRef<HTMLButtonElement>(null);
+  const askButtonRef = useRef<HTMLButtonElement>(null);
   const cameraOn = cameraStatus === "camera-ready" || cameraStatus === "requesting-permissions";
   const busyCapturing = ask.phase === "capturing";
 
   const focusPrimary = () => requestAnimationFrame(() => primaryRef.current?.focus());
+
+  // Focus moves only when the person's own action asks for it (Ask another question, Edit
+  // question, the spoken "ask" command), never for a status update.
+  const { focusRequest } = ask;
+  useEffect(() => {
+    if (focusRequest.target === "question") document.getElementById("question-heading")?.focus();
+    else if (focusRequest.target === "ask") askButtonRef.current?.focus();
+  }, [focusRequest]);
 
   const answered = ask.phase === "answered" && ask.result !== null;
   const failed = ask.phase === "send-failed" && ask.sendError !== null;
@@ -45,7 +55,7 @@ export function AskPanel({ ask, cameraStatus, onStartCamera, onStopCamera, previ
   return (
     <div className="space-y-5">
       {/* Spoken feedback for screen readers; visible state is shown elsewhere. */}
-      <div role="status" aria-live="polite" className="sr-only">
+      <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
         {ask.announcement}
       </div>
 
@@ -85,6 +95,7 @@ export function AskPanel({ ask, cameraStatus, onStartCamera, onStopCamera, previ
                   icon="camera"
                   onClick={ask.capture}
                   disabled={!ask.can.capture || busyCapturing}
+                  onBlockedClick={() => ask.notify(busyCapturing ? "Capturing the photo. Please wait." : "The camera is not ready yet. Wait until it is on.")}
                 >
                   {busyCapturing ? "Capturing…" : "Capture photo"}
                 </ActionButton>
@@ -137,12 +148,14 @@ export function AskPanel({ ask, cameraStatus, onStartCamera, onStopCamera, previ
                   <QuestionInput ask={ask} />
                   <div className="space-y-2">
                     <ActionButton
+                      ref={askButtonRef}
                       large
                       variant="primary"
                       icon="send"
                       onClick={ask.ask}
                       disabled={!ask.can.ask}
                       describedBy="ask-hint ask-disclosure"
+                      onBlockedClick={() => ask.notify(blockedActionAnnouncement(ask.askBlockedReason, "Ask is not available yet."))}
                     >
                       Ask
                     </ActionButton>

@@ -186,6 +186,20 @@ thresholds (cannot be calibrated without devices), the logging of the question k
 thresholds; native-speaker review of Hindi/Kannada safety wording; deciding how to
 run the rate limiter in production (in-memory today).
 
+## Milestone 9 — Blind accessibility and audio-first experience ✅ (implemented 2026-11-06; awaiting review)
+
+Audit first (`docs/accessibility.md`), then: a screen-reader-first workflow (one live region with a dedupe and
+re-announce rule, a predictable focus map, answer announced as ready but never read automatically, disabled
+buttons that explain themselves, the recognised question read back, camera region described, status symbols
+hidden from screen readers, step headings); an optional **Voice-guided** mode (short prompts in en/hi/kn, one
+shared speech player, prompt-then-listen, optional automatic reading, Stop VisionAid voice and Escape); an
+optional one-shot **voice command** mode (English; "ask" never sends); accessibility settings with three
+remembered choices; privacy text updated.
+
+Not done / limits: not tested with TalkBack, VoiceOver or blind users; Hindi and Kannada prompts are unreviewed
+by native speakers; commands are English only; the language is still not remembered; iOS may block
+non-gesture speech (to be confirmed). Next steps need real devices: `docs/testing-checklist.md` ("Milestone 9").
+
 ## Optional future extension — Gemini Live Mode
 - Continuous voice conversation using the existing ephemeral-token endpoint and
   PCM16 pipeline.

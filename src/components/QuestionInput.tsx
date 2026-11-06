@@ -14,7 +14,7 @@ export function QuestionInput({ ask }: { ask: AskController }) {
 
   return (
     <section aria-labelledby="question-heading" className="space-y-3">
-      <h3 id="question-heading" className="text-xl font-bold">
+      <h3 id="question-heading" tabIndex={-1} className="text-xl font-bold">
         Your question
       </h3>
 
@@ -48,7 +48,7 @@ export function QuestionInput({ ask }: { ask: AskController }) {
             onClick={listening ? ask.stopListening : ask.startListening}
             disabled={!listening && !ask.can.listen}
           >
-            {listening ? "Stop speaking" : `Start speaking (${langInfo(ask.lang).englishName})`}
+            {listening ? "Stop listening" : `Start speaking (${langInfo(ask.lang).englishName})`}
           </ActionButton>
 
           {listening && (
@@ -57,7 +57,7 @@ export function QuestionInput({ ask }: { ask: AskController }) {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
                 <span className="relative inline-flex h-3 w-3 rounded-full bg-primary" />
               </span>
-              Listening… speak your question, then tap Stop speaking.
+              Listening… speak your question, then tap Stop listening.
             </p>
           )}
 

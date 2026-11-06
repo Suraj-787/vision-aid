@@ -50,6 +50,10 @@ export function PrivacyNotice() {
             <li>Stop camera and Stop microphone turn each one off and release it at any time.</li>
             <li>VisionAid does not save photos, audio, questions or answers.</li>
             <li>
+              Your three accessibility settings (voice mode, reading answers aloud, voice commands) are saved in this
+              browser so you do not have to choose them again. Nothing else is saved.
+            </li>
+            <li>
               Test only with people who have agreed. Avoid faces and bystanders, private documents,
               prescriptions with personal details, addresses, cards and screens.
             </li>

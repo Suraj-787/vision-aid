@@ -32,6 +32,16 @@ VisionAid has a deterministic result it states that itself and removes
 conflicting claims from the AI's wording, listing what it changed. Details,
 rules and limits: `docs/ask-api.md`.
 
+### Using VisionAid without seeing the screen (Milestone 9)
+
+Two ways to use it, chosen in *Accessibility settings*: **Screen reader** (default: use TalkBack or
+VoiceOver; VisionAid does not speak by itself, announces changes, and moves focus predictably) or
+**Voice guided** (VisionAid speaks short prompts, and can read answers aloud automatically if you turn that
+on). An optional **Say a command** button hears one English command per tap (capture photo, retake photo,
+start speaking, repeat answer, ask); "ask" only moves to the Ask button, you always send by activating it.
+See `docs/accessibility.md`. This has been tested with automated browser tests only, **not yet with a real
+screen reader or blind users**.
+
 ### Languages and reading aloud (Milestone 7)
 
 One selector chooses **English (India), Hindi or Kannada**. It sets the language
@@ -67,6 +77,7 @@ What to expect, honestly:
 | 5 Gemini image understanding | ✅ | `POST /api/ask` -> one Gemini request -> validated answer shown as text |
 | 6 Structured processing and deterministic tools | ✅ built, awaiting review | Intent, confidence, expiry check, banknote gating, safety guards |
 | 7 Voice interaction and languages | ✅ built, awaiting review | Listen/Pause/Stop, en / hi / kn selector, `response_language`, multilingual print rules; physical-device tests still to do; Sarvam not integrated |
+| 9 Blind accessibility and audio-first experience | ✅ built, awaiting review | Screen-reader-first announcements and focus, optional Voice-guided mode, optional voice commands, accessibility settings. **Not yet tested with TalkBack, VoiceOver or blind users** |
 | 8 Final validation and production readiness | ✅ built, awaiting review | Audit + fixes: sharper photos, Cancel frees the server slot, security headers, browser/a11y test scripts. **Physical-device testing still to do** |
 
 The interface follows the "Calm Clarity" design system: teal and amber, Atkinson Hyperlegible, a viewfinder motif, WCAG 2.2 AA contrast, light and dark. See `docs/design-system.md`.
@@ -141,8 +152,10 @@ All are server-only; see `.env.example`. Never use `NEXT_PUBLIC_*` for keys.
   would receive the answer text (the interface says when a voice may be online).
   If you choose Hindi or Kannada, that language choice is sent to Gemini with your
   photo and question. The language choice itself is not stored.
-- VisionAid stores nothing (no database, localStorage, files or cookies); images,
-  audio, questions, answers, keys and tokens are never logged.
+- VisionAid stores no photos, audio, questions, answers or transcripts (no database,
+  files or cookies); images, audio, questions, answers, keys and tokens are never
+  logged. The one thing kept in the browser's `localStorage` is a small object with your
+  three accessibility settings (see below), only after you change one.
 - **Free tier:** Google's pricing page says Free-tier content is used to improve
   its products. Do not send personal, medical, financial or bystander
   information while testing on the free tier; use staged scenes and consenting

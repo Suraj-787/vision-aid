@@ -313,7 +313,7 @@ await scenario("7. Speech recognition language, typed fallback, duplicate taps, 
   must(await a.has("Start speaking (English)"), "Start speaking names the language");
   for (const [lang, name] of [["en-IN", "English"], ["hi-IN", "Hindi"], ["kn-IN", "Kannada"]]) {
     await a.pick(lang); await sleep(60);
-    await a.clickTwice(`Start speaking (${name})`); await a.wait("Stop speaking");
+    await a.clickTwice(`Start speaking (${name})`); await a.wait("Stop listening");
     const starts = await a.page.evaluate(() => window.__rec.starts.slice());
     must(starts[starts.length - 1] === lang, `${name}: recognition language is set explicitly to ${lang}`, starts.join());
     must(await a.page.evaluate(() => document.querySelector("#app-language").getAttribute("aria-disabled") === "true" || document.querySelector("#app-language").disabled), "language cannot be changed while listening");
@@ -325,7 +325,7 @@ await scenario("7. Speech recognition language, typed fallback, duplicate taps, 
   const total = await a.page.evaluate(() => window.__rec.starts.length);
   must(total === 3, "double activation started recognition only once each time", String(total));
   // recognition error: typed input still works
-  await a.pick("hi-IN"); await a.click("Start speaking (Hindi)"); await a.wait("Stop speaking");
+  await a.pick("hi-IN"); await a.click("Start speaking (Hindi)"); await a.wait("Stop listening");
   await a.page.evaluate(() => window.__rec.fail("language-not-supported"));
   await sleep(200);
   const alert = await a.page.evaluate(() => document.querySelector('[role="alert"]')?.textContent ?? "");
@@ -337,7 +337,7 @@ await scenario("7. Speech recognition language, typed fallback, duplicate taps, 
   await a.pick("en-IN"); await a.askAndWait();
   await a.click("Listen to answer"); await a.wait("Pause");
   await a.click("Ask another question"); await a.page.waitForSelector("#question-input");
-  await a.click("Start speaking (English)"); await a.wait("Stop speaking");
+  await a.click("Start speaking (English)"); await a.wait("Stop listening");
   const seq = await a.seq();
   const lastStart = seq.lastIndexOf("rec.start"), lastCancel = seq.lastIndexOf("cancel");
   must(lastCancel !== -1 && lastCancel < lastStart, "speech was cancelled before the microphone started", seq.slice(-6).join(","));

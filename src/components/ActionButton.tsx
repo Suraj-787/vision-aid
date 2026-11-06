@@ -13,6 +13,8 @@ interface ActionButtonProps {
   /** A decorative icon before the label (the label always carries the meaning). */
   icon?: IconName;
   describedBy?: string;
+  /** Called when a disabled button is activated anyway, so the person hears why nothing happened. */
+  onBlockedClick?: () => void;
   ref?: Ref<HTMLButtonElement>;
 }
 
@@ -24,6 +26,7 @@ export function ActionButton({
   large = false,
   icon,
   describedBy,
+  onBlockedClick,
   ref,
 }: ActionButtonProps) {
   return (
@@ -34,6 +37,7 @@ export function ActionButton({
       aria-describedby={describedBy}
       onClick={() => {
         if (!disabled) onClick();
+        else onBlockedClick?.();
       }}
       className={`btn btn-${variant} ${large ? "btn-large" : ""}`}
     >

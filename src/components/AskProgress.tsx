@@ -7,13 +7,16 @@ import type { AskFailure } from "@/lib/ask/client";
 
 /** Shown while the single request to /api/ask is in flight. No fake progress: just what is happening. */
 export function SendingView({ question }: { question: string }) {
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  // The Ask button is replaced by this card, so focus goes to its heading (not lost to the page).
+  useEffect(() => headingRef.current?.focus(), []);
   return (
     <section
       aria-labelledby="sending-heading"
       aria-busy="true"
       className="card card-raised rise space-y-3 p-[min(1.25rem,4.5vw)]"
     >
-      <h3 id="sending-heading" className="flex items-center gap-3 text-xl font-bold">
+      <h3 id="sending-heading" ref={headingRef} tabIndex={-1} className="flex items-center gap-3 text-xl font-bold">
         <span
           aria-hidden="true"
           className="inline-block h-6 w-6 animate-spin rounded-full border-4 border-border border-t-primary"

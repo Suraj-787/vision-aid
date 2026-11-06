@@ -1,11 +1,15 @@
 "use client";
 
+import { AccessibilitySettings } from "@/components/AccessibilitySettings";
 import { AskPanel } from "@/components/AskPanel";
 import { CameraPreview } from "@/components/CameraPreview";
 import { Icon } from "@/components/Icon";
 import { MicrophonePanel } from "@/components/MicrophonePanel";
+import { VoiceBar } from "@/components/VoiceBar";
+import { useA11yPrefs } from "@/hooks/useA11yPrefs";
 import { useAsk } from "@/hooks/useAsk";
 import { useCamera } from "@/hooks/useCamera";
+import { useEffect } from "react";
 import { useMicrophone } from "@/hooks/useMicrophone";
 
 /**
@@ -22,19 +26,35 @@ export function SessionShell() {
   const camera = useCamera();
   const microphone = useMicrophone();
   const cameraActive = camera.status === "camera-ready";
+  const { prefs, update } = useA11yPrefs();
 
   const ask = useAsk({
     videoRef: camera.videoRef,
     cameraActive,
+    prefs,
     onBeforeListen: () => {
       if (microphone.status !== "idle") microphone.stop();
     },
   });
 
+  // Voice-guided mode: say once that the camera could not start (the message is also an alert).
+  const { speakCameraError } = ask;
+  const cameraError = camera.error;
+  useEffect(() => {
+    if (cameraError) speakCameraError();
+  }, [cameraError, speakCameraError]);
+
+  // The current step, as a heading, so it can be found with heading navigation.
+  const step = ask.image === null ? "Step 1 of 3: Take a photo" : ask.phase === "answered" ? "Step 3 of 3: Your answer" : "Step 2 of 3: Ask your question";
+
   return (
+    <div className="space-y-5">
+      <AccessibilitySettings ask={ask} prefs={prefs} update={update} />
+      <VoiceBar ask={ask} prefs={prefs} />
+
     <section aria-labelledby="session-heading" className="space-y-5">
-      <h2 id="session-heading" className="sr-only">
-        Ask about a photo
+      <h2 id="session-heading" className="text-base font-bold text-muted">
+        {step}
       </h2>
 
       {camera.error && (
@@ -69,5 +89,6 @@ export function SessionShell() {
         </div>
       </details>
     </section>
+    </div>
   );
 }

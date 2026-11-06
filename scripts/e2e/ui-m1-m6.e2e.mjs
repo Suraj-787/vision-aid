@@ -107,7 +107,10 @@ await scenario("1. Expiry answer: card, printed text, assumptions, notice, nothi
   const focus = await a.page.evaluate(() => document.activeElement?.id);
   must(focus === "answer-heading", "focus moved to the answer", focus);
   const sr = await a.page.evaluate(() => document.querySelector('.sr-only[role="status"]').textContent);
-  must(/^Answer: .*not passed yet/.test(sr) && sr.includes("Compared with today"), "screen-reader announcement includes the app's own expiry explanation", sr.slice(0, 80));
+  // Milestone 9: focus moves to the Answer heading and the live region only says the answer is ready.
+  // The answer text is no longer read out automatically (the person navigates to it or taps Listen).
+  must(/^Your answer is ready\./.test(sr), "the screen-reader announcement says the answer is ready", sr.slice(0, 80));
+  must(!sr.includes("not passed yet") && !sr.includes("Compared with today"), "the answer's own text is NOT read out automatically", sr.slice(0, 80));
 });
 
 await scenario("2. Expired and unclear statuses read clearly (not colour alone)", ({ n }) =>

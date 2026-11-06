@@ -12,12 +12,13 @@ const answer = { intent: "expiry_date", answer: 'The printed expiry date "EXP 08
   expiry_check: { status: "not_expired", kind: "expiry", printed_text: "EXP 08/2027", manufacturing_text: "MFG 02/2026", interpreted_as: "August 2027", checked_on: "2026-11-06", checked_on_source: "device", explanation: "x has not passed yet.", assumptions: ["a"] },
   notices: ["expiry_limits", "currency_limits"], adjustments: ["navigation_claim_removed"] };
 
-async function run(scheme, width, zoom = false, reduceMotion = false) {
+async function run(scheme, width, zoom = false, reduceMotion = false, prefs = null) {
   const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--no-first-run"] });
   const page = await browser.newPage();
   await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }, { name: "prefers-reduced-motion", value: reduceMotion ? "reduce" : "no-preference" }]);
   await page.setViewport({ width, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   let mode = "ok";
+  if (prefs) await page.evaluateOnNewDocument((p) => { localStorage.setItem("visionaid.accessibility.v1", JSON.stringify(p)); }, prefs);
   await page.setRequestInterception(true);
   page.on("request", (req) => {
     if (req.url().endsWith("/api/ask") && req.method() === "POST") {
@@ -32,7 +33,7 @@ async function run(scheme, width, zoom = false, reduceMotion = false) {
   const out = { scheme, width, zoom, reduceMotion, states: {} };
   const axe = async (name) => {
     const r = await page.evaluate(async () => { const r = await axe.run(document, { resultTypes: ["violations", "incomplete"], runOnly: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"] }); return { v: r.violations.map((x) => ({ id: x.id, impact: x.impact, n: x.nodes.length, sample: x.nodes[0].html.slice(0, 120), msg: x.nodes[0].failureSummary?.split("\n")[1] })), inc: r.incomplete.map((x) => ({ id: x.id, n: x.nodes.length })) }; });
-    const targets = await page.evaluate(() => [...document.querySelectorAll("button, a[href], select, textarea, input, summary, [tabindex]:not([tabindex='-1'])")].filter((e) => e.offsetParent !== null && !e.closest(".sr-only") && getComputedStyle(e).position !== "fixed").map((e) => { const r = e.getBoundingClientRect(); return { t: (e.textContent || e.id || e.tagName).trim().slice(0, 30), w: Math.round(r.width), h: Math.round(r.height) }; }).filter((x) => x.w < 44 || x.h < 44));
+    const targets = await page.evaluate(() => [...document.querySelectorAll("button, a[href], select, textarea, input, summary, [tabindex]:not([tabindex='-1'])")].filter((e) => e.offsetParent !== null && !e.closest(".sr-only") && getComputedStyle(e).position !== "fixed").map((e) => { const r = (e.tagName === "INPUT" && e.closest("label") ? e.closest("label") : e).getBoundingClientRect(); /* a radio or checkbox is activated through its whole label */ return { t: (e.textContent || e.id || e.tagName).trim().slice(0, 30), w: Math.round(r.width), h: Math.round(r.height) }; }).filter((x) => x.w < 44 || x.h < 44));
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
     const focus = await page.evaluate(() => { const a = document.activeElement; return a === document.body ? "BODY (focus lost)" : `${a.tagName.toLowerCase()}#${a.id}:${(a.textContent || "").trim().slice(0, 25)}`; });
     out.states[name] = { violations: r.v, incomplete: r.inc, smallTargets: targets, overflow, focus };
@@ -40,6 +41,9 @@ async function run(scheme, width, zoom = false, reduceMotion = false) {
   const click = (n) => page.evaluate((n) => { const b = [...document.querySelectorAll("button")].find((x) => x.textContent.trim() === n); if (!b) throw new Error("no " + n); b.focus(); b.click(); }, n);
   const wait = (n) => page.waitForFunction((n) => [...document.querySelectorAll("button")].some((x) => x.textContent.trim() === n), { timeout: 8000 }, n);
   await axe("initial");
+  await page.evaluate(() => { document.querySelector("#a11y-heading").closest("details").open = true; });
+  await axe("settings-open"); // the accessibility settings expanded
+  await page.evaluate(() => { document.querySelector("#a11y-heading").closest("details").open = false; });
   await click("Start camera"); await wait("Capture photo"); await sleep(500);
   await axe("camera-ready");
   await click("Capture photo"); await wait("Retake photo"); await sleep(300);
@@ -63,6 +67,9 @@ for (const [scheme, width] of RUNS) results.push(await run(scheme, width));
 results.push(await run("light", 390, true)); // 200% text enlargement
 results.push(await run("light", 320, true));
 results.push(await run("light", 390, false, true)); // reduced motion
+// voice-guided mode with voice commands on (adds the voice bar)
+results.push(await run("light", 390, false, false, { mode: "voice-guided", autoReadAnswers: true, voiceCommands: true }));
+results.push(await run("dark", 1280, false, false, { mode: "voice-guided", autoReadAnswers: false, voiceCommands: true }));
 for (const r of results) {
   console.log(`\n=== ${r.scheme} ${r.width}px${r.zoom ? " TEXT 200%" : ""}${r.reduceMotion ? " REDUCED-MOTION (button transition " + r.animation + ")" : ""}  captured: ${r.captured}`);
   for (const [name, s] of Object.entries(r.states)) {

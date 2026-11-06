@@ -33,10 +33,11 @@ function htmlLangOf(text: string | null): string | undefined {
   return lang ? langInfo(lang).htmlLang : undefined;
 }
 
-const EXPIRY_STATUS_LABEL: Record<ExpiryCheck["status"], string> = {
-  expired: "✕ Expired",
-  not_expired: "✓ Not expired yet",
-  unclear: "? Unclear",
+/** The symbol is a visual cue only (hidden from screen readers, which hear the words). */
+const EXPIRY_STATUS_LABEL: Record<ExpiryCheck["status"], { glyph: string; text: string }> = {
+  expired: { glyph: "✕", text: "Expired" },
+  not_expired: { glyph: "✓", text: "Not expired yet" },
+  unclear: { glyph: "?", text: "Unclear" },
 };
 
 /** Status is words plus a symbol and a tinted banner: never colour alone. */
@@ -60,7 +61,10 @@ function ExpiryCard({ check, notice }: { check: ExpiryCheck; notice: string | nu
   return (
     <Section title="Expiry check">
       <p className={`callout ${EXPIRY_STATUS_STYLE[check.status]} font-display text-xl font-bold`}>
-        {EXPIRY_STATUS_LABEL[check.status]}
+        <span>
+          <span aria-hidden="true">{EXPIRY_STATUS_LABEL[check.status].glyph} </span>
+          {EXPIRY_STATUS_LABEL[check.status].text}
+        </span>
       </p>
       <dl className="space-y-1 text-caption">
         <div>
@@ -108,7 +112,10 @@ function CurrencyCard({ check, notice }: { check: CurrencyCheck; notice: string 
     <Section title="Banknote check">
       <p className={`callout ${identified ? "callout-info" : "callout-warning"} font-display text-xl font-bold`}>
         <Icon name="banknote" className="mt-0.5" />
-        <span>{identified ? `Appears to be: ₹${check.denomination}` : "? Could not tell the value"}</span>
+        <span>
+          {!identified && <span aria-hidden="true">? </span>}
+          {identified ? `Appears to be: ₹${check.denomination}` : "Could not tell the value"}
+        </span>
       </p>
       <p>{check.message}</p>
       {check.evidence && (

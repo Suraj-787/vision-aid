@@ -11,7 +11,22 @@ const CHIP_TEXT: Record<CameraStatus, string> = {
   idle: "Camera off",
   "requesting-permissions": "Waiting for permission",
   "camera-ready": "Camera on",
-  error: "Camera off",
+  error: "Camera unavailable",
+};
+
+/** What a screen-reader user hears about the camera region (the preview itself is visual only). */
+const CAMERA_HELP: Record<CameraStatus, string> = {
+  idle: "The camera is off. Use Start camera to turn it on. You do not need to see the preview to take a photo.",
+  "requesting-permissions": "Waiting for you to allow camera access in your browser.",
+  "camera-ready": "The camera is on. Point it at what you want to ask about, then use Capture photo. You do not need to see the preview.",
+  error: "The camera could not start. See the message above, then use Start camera to try again.",
+};
+
+const CHIP_HINT: Record<CameraStatus, string> = {
+  idle: "",
+  "requesting-permissions": ". Allow camera access when your browser asks.",
+  "camera-ready": ". Ready to capture a photo.",
+  error: ". See the message above.",
 };
 
 /**
@@ -24,7 +39,10 @@ export function CameraPreview({ videoRef, status }: CameraPreviewProps) {
   const requesting = status === "requesting-permissions";
 
   return (
-    <div className="viewfinder">
+    <div role="group" aria-label="Camera" aria-describedby="camera-help" className="viewfinder">
+      <p id="camera-help" className="sr-only">
+        {CAMERA_HELP[status]}
+      </p>
       <span className="vf-corner-bl" aria-hidden="true" />
       <span className="vf-corner-br" aria-hidden="true" />
       <div
@@ -34,12 +52,13 @@ export function CameraPreview({ videoRef, status }: CameraPreviewProps) {
           ref={videoRef}
           muted
           playsInline
-          aria-label="Live camera preview from your device. Nothing is recorded or sent."
+          aria-hidden="true"
+          tabIndex={-1}
           className={`h-full w-full object-cover ${live ? "" : "invisible"}`}
         />
 
         {!live && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-center">
+          <div aria-hidden="true" className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-center">
             {requesting ? (
               <span
                 aria-hidden="true"
@@ -72,6 +91,7 @@ export function CameraPreview({ videoRef, status }: CameraPreviewProps) {
             <Icon name="camera-off" size={0.75} />
           )}
           {CHIP_TEXT[status]}
+          <span className="sr-only">{CHIP_HINT[status]}</span>
         </span>
       </div>
     </div>

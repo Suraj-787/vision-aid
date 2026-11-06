@@ -147,8 +147,8 @@ answer is not auto-played, unsupported synthesis, missing Hindi voice, en/hi/kn
 voice choice and request language, mismatch note, recognition `lang` per language,
 typed fallback and recognition errors, double tap on Start speaking, speech is
 cancelled before the microphone starts, engine failures and a device that ignores
-pause, keyboard use, labels, announcements, 44 px targets, nothing in
-localStorage/sessionStorage, regression of the Milestone 1–6 flows.
+pause, keyboard use, labels, announcements, 44 px targets, no content in
+localStorage/sessionStorage (since Milestone 9 only the three accessibility settings may be stored, and only after the person changes one), regression of the Milestone 1–6 flows.
 
 ### Physical devices (NOT done; required before claiming Hindi/Kannada support)
 Record for each device/browser: OS version, browser version, result, notes.
@@ -245,6 +245,70 @@ tunnel to a **production** build, because the security headers are production-on
 - [ ] Hindi and Kannada text is pronounced with the right voice (`lang` attributes) and the language selector is understandable.
 **Performance**
 - [ ] Time from tapping Ask to the answer on mobile data; any slowness at 1280 px; camera preview smoothness; device warmth after 10 questions.
+
+## Milestone 9: blind accessibility and audio-first experience
+
+### Automated (run 2026-11-06; headless Chrome, fake camera, MOCKED Gemini and speech)
+These prove the app's logic. **They do not prove how TalkBack or VoiceOver sound or behave, nor anything about a
+real phone, real speech recognition or a real blind user.**
+- `npm run lint`, `npm run typecheck`, `npm run build`: pass. `npm test`: 643 tests pass (42 new: the announcer's dedupe
+  and re-announce rules, the screen-reader message builders, preference parsing and storage, the Hindi/Kannada/English
+  guidance wording, and the voice-command parser and step rules).
+- `scripts/e2e/ui-m9.e2e.mjs` (146 checks) uses a *virtual screen reader* (live-region announcements and focus):
+  entry structure; screen-reader-first flow with one announcement per event, focus never lost, answer announced as ready and
+  **not read**, no speech at all; disabled buttons explain themselves; the recognised question is read back; quality advice is
+  advisory; voice-guided mode (chosen by the person, remembered, nothing spoken on load, one prompt per event, Hindi
+  voice for Hindi, **no wrong-language fallback**); automatic reading only in voice-guided mode and after the prompt; the
+  microphone starts only after its prompt finished; Stop VisionAid voice, Escape, Stop listening, page hide; failure announced
+  once; voice commands (explicit, English, restricted by step, **"ask" never sends**, nothing stored); unsupported speech
+  or recognition; settings labelled, described, keyboard operable and at least 44 px.
+- Regression: `ui-m1-m6` (86), `ui-m7` (153), `ui-m8` (67), `lifecycle` (10) pass; `a11y-audit` (13 runs including the
+  settings expanded and voice-guided mode): 0 axe violations, 0 overflow, 0 targets under 44 px.
+- Assertions changed on purpose (nothing was weakened): the answer is no longer announced in full (`ui-m1-m6` now checks
+  that the announcement says "Your answer is ready." and does **not** contain the answer); the dictation button is "Stop listening"
+  (it was "Stop speaking", the same name as the playback button), updated in `ui-m7` and `ui-m8`.
+
+### Manual: what YOU still need to run (NONE of this has been done)
+Use staged, non-sensitive items. Record device, OS, browser and screen-reader versions, and the result and exact wording heard.
+Prefer testing with blind or low-vision people; keep their feedback separate from these results.
+
+**A. Android: TalkBack + Chrome (HTTPS, production build)**
+1. Open VisionAid with TalkBack on. Swipe from the top: do you learn the name, the purpose, the safety limit, the current step
+   ("Step 1 of 3: Take a photo") and the settings, without a long monologue?
+2. Is the first heading/landmark navigation (headings control) useful? Is the order logical?
+3. Double-tap **Start camera**. Do you hear "Waiting for permission…", then (after allowing) "Camera on. Ready to capture a photo."? Is the
+   video silent for TalkBack (no repeated "camera preview" chatter)?
+4. Double-tap **Capture photo**. Does focus land on "Photo captured" and do you hear it **once**, followed by the next step? Take a deliberately dark or blurry photo:
+   do you hear the advice, and can you still continue?
+5. Swipe to **Retake photo**; retake; confirm focus returns to Capture photo.
+6. Open **Language**; change it and swipe on: is the voice-availability message understandable?
+7. Dictate with **Start speaking** (English, then Hindi, then Kannada if you use them): permission prompt, then "Listening. Speak your question."; after you stop, do you hear your question read back? Edit it in the text box.
+8. Double-tap **Ask**. Does focus go to "Asking Gemini…", then "Answer", with only "Your answer is ready." spoken (no automatic reading of the answer)?
+9. Swipe through the answer: headings, warnings ("What is unclear"), printed text, expiry or banknote result (is "Not expired yet" read clearly, without "check mark"?).
+10. **Listen to answer**, **Pause**, **Resume**, **Stop speaking**. Do TalkBack and VisionAid speak over each other? (They will if both are on: note it.)
+11. Errors: turn on airplane mode and Ask (a clear message, once, focus on its heading, no automatic retry); deny the camera, then the microphone permission: is each message clear and actionable?
+12. Lock the screen and switch apps while the camera is on and while speech plays: it must stop and nothing may resume by itself.
+
+**B. iPhone: VoiceOver + Safari (HTTPS)**
+Repeat A, and also check: focus order and double-tap activation; **rotor** navigation by heading and by form control; the quality of every
+announcement; camera and microphone permission prompts; that the camera preview plays inline; speech playback (the first speech
+must start from a tap); screen lock and app switching. Does `webkitSpeechRecognition` work (it needs Siri and Dictation enabled)?
+
+**C. Voice-guided mode (VoiceOver/TalkBack OFF)**
+1. Choose **Voice guided**: you should hear the welcome in the selected language, from your tap. Reload the page: **no** speech until you act.
+2. Walk the flow with your eyes closed: camera ready, photo captured (+ advice), listening, processing, answer ready, failure ("Unable to get an answer. You can try again."). Is each prompt short, correct and heard once?
+3. Does listening start only after "Listening. Speak your question." ends? If the browser refuses (iOS), is the message clear and does the next tap start at once?
+4. Turn on **Read answers aloud automatically**: does the answer start after "Your answer is ready." (it may be blocked on iOS: record what you hear)?
+5. **Stop VisionAid voice** and **Escape** (Bluetooth keyboard) must stop speech immediately.
+6. Repeat in **Hindi** and **Kannada** with the matching voice installed, and with it **removed**: with no voice, nothing may be spoken in another language and the message must say why.
+7. Native speakers of Hindi and Kannada should read every prompt in `src/lib/guidance/messages.ts` and say whether it is natural and means the same as the English. **Until they have, treat those texts as unreviewed.**
+
+**D. Voice commands (turn on in settings)**
+Tap **Say a command** and try each: capture photo (camera on), retake photo, start speaking, repeat answer, ask, and a phrase that is not a command. Confirm: one command per tap, nothing listens in the
+background, **"ask" only focuses the Ask button and never sends**, commands that do not fit the step are explained, **Stop listening** cancels at once, and nothing is stored. Note recognition accuracy in noise.
+
+**E. Real users**
+Ask blind and low-vision people to do: open → Start camera → Capture → Ask → Listen → Repeat or Stop, in both modes, without help. Record where they hesitated, what confused them (names, order, repetition, speech overlap) and what they would change.
 
 ## Retained infrastructure (not part of Tap-to-Ask)
 

@@ -212,7 +212,7 @@ await scenario("5. Camera permission denied: explained, nothing left running, ca
 
 await scenario("6. Microphone/speech permission denied: explained; typing still completes the flow", { recog: true }, () => ok(), async (a) => {
   await a.setup("");
-  await a.click("Start speaking (English)"); await a.wait("Stop speaking");
+  await a.click("Start speaking (English)"); await a.wait("Stop listening");
   await a.page.evaluate(() => window.__rec.fail("not-allowed")); await sleep(300);
   const alert = await a.page.evaluate(() => document.querySelector('[role="alert"]')?.textContent ?? "");
   must(/permission was not granted/i.test(alert) && /type your question instead/i.test(alert), "denial explained with a typing alternative", alert.slice(0, 90));

@@ -446,8 +446,8 @@ of a wrong or unsafe answer. Milestone 6 adds deterministic post-checks (see
 The selected answer language travels with the request (it is not secret, but it is
 sent to Gemini through the instruction). Photo, question, answer and errors exist only in server memory for the duration of
 the request and in browser memory until Retake, Cancel, leaving the page or
-unmount. Nothing is written to a database, file, localStorage, sessionStorage,
-IndexedDB or cookies; responses are `Cache-Control: no-store`; and image data,
+unmount. Nothing from this flow is written to a database, file, localStorage, sessionStorage,
+IndexedDB or cookies (the page keeps one small `localStorage` object with the person's three accessibility settings, never content: see `docs/accessibility.md`); responses are `Cache-Control: no-store`; and image data,
 base64, questions, transcripts, model output, keys and tokens are never logged
 (server log lines are short event strings such as `[ask] answered in 812 ms (image 41 KB, intent expiry_date)`: timing, the photo's size and the kind of question, never their content; a hosting provider may also log basic request details such as time and network address).
 
