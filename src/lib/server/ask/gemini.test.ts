@@ -7,7 +7,8 @@ import { readAskConfig } from "./config.ts";
 import { classifyUpstreamError } from "./errors.ts";
 import { createGeminiClient } from "./gemini.ts";
 import { handleAsk, type AskDeps } from "./handler.ts";
-import { askRequest, makeJpeg, toBase64, VALID_ANSWER } from "./test-utils.ts";
+import { askRequest, makeJpeg, toBase64, VALID_ANSWER, VALID_MODEL_OUTPUT } from "./test-utils.ts";
+import { MODEL_OUTPUT_KEYS } from "./prompt.ts";
 
 /**
  * These tests run the REAL @google/genai SDK against a local fake server, so the
@@ -62,7 +63,7 @@ after(async () => {
 
 beforeEach(() => {
   requests = [];
-  respond = (_req, res) => json(res, 200, okBody(JSON.stringify(VALID_ANSWER)));
+  respond = (_req, res) => json(res, 200, okBody(JSON.stringify(VALID_MODEL_OUTPUT)));
 });
 
 const input = { apiKey: API_KEY, model: MODEL, imageBase64: IMAGE, question: QUESTION };
@@ -78,7 +79,7 @@ describe("the request sent to Gemini (real SDK, fake server)", () => {
     assert.equal(req.headers["x-goog-api-key"], API_KEY);
     assert.ok(!req.url.includes(API_KEY), "key is not in the URL");
     assert.ok(!req.body.includes(API_KEY), "key is not in the body");
-    assert.deepEqual(JSON.parse(out.text ?? ""), VALID_ANSWER);
+    assert.deepEqual(JSON.parse(out.text ?? ""), VALID_MODEL_OUTPUT);
     assert.equal(out.finishReason, "STOP");
   });
 
@@ -98,8 +99,12 @@ describe("the request sent to Gemini (real SDK, fake server)", () => {
     const body = JSON.parse(requests[0].body);
     assert.equal(body.generationConfig.responseMimeType, "application/json");
     const schema = body.generationConfig.responseJsonSchema;
-    assert.deepEqual(schema.required, ["answer", "details", "uncertainty", "printed_text", "printed_instructions"]);
+    assert.deepEqual(schema.required, [...MODEL_OUTPUT_KEYS]);
     assert.deepEqual(schema.properties.details.type, ["string", "null"]);
+    assert.deepEqual(schema.properties.intent.enum.length, 7);
+    assert.deepEqual(schema.properties.confidence.enum, ["low", "medium", "high"]);
+    assert.deepEqual(schema.properties.currency.required, ["denomination", "currency", "evidence"]);
+    assert.deepEqual(schema.properties.expiry.required, ["expiry_date", "expiry_kind", "manufacturing_date", "date_text"]);
     assert.equal(schema.additionalProperties, false);
     const system = body.systemInstruction.parts[0].text as string;
     assert.match(system, /NOT a navigation or obstacle-avoidance system/);
@@ -232,5 +237,24 @@ describe("handleAsk with the real SDK against the fake server", () => {
     respond = (_req, res) => json(res, 200, okBody(JSON.stringify({ answer: "only an answer" })));
     const res = await run(deps());
     assert.equal(res.status, 502);
+  });
+});
+
+describe("answer language in the Gemini request (Milestone 7)", () => {
+  it("without a language, the system instruction is the fixed one and nothing about language is added", async () => {
+    await createGeminiClient({ baseUrl }).generate(input);
+    const system = JSON.parse(requests[0].body).systemInstruction.parts[0].text as string;
+    assert.doesNotMatch(system, /\nANSWER LANGUAGE\n/);
+  });
+
+  it("with a language, the same single request carries the directive in the system instruction", async () => {
+    await createGeminiClient({ baseUrl }).generate({ ...input, responseLanguage: "hi-IN" });
+    assert.equal(requests.length, 1, "no second request for translation");
+    const body = JSON.parse(requests[0].body);
+    const system = body.systemInstruction.parts[0].text as string;
+    assert.match(system, /ANSWER LANGUAGE[\s\S]*Hindi in Devanagari script/);
+    assert.match(system, /NOT a navigation or obstacle-avoidance system/);
+    assert.equal(body.contents.length, 1);
+    assert.doesNotMatch(JSON.stringify(body.contents), /Hindi/); // the language never goes into the user turn
   });
 });

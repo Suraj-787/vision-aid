@@ -5,6 +5,7 @@ import { ActionButton } from "@/components/ActionButton";
 import { AnswerView } from "@/components/AnswerView";
 import { SendFailure, SendingView } from "@/components/AskProgress";
 import { CapturedImageReview } from "@/components/CapturedImageReview";
+import { LanguageSelector } from "@/components/LanguageSelector";
 import { QuestionInput } from "@/components/QuestionInput";
 import type { useAsk } from "@/hooks/useAsk";
 import type { CameraStatus } from "@/hooks/useCamera";
@@ -40,6 +41,8 @@ export function AskPanel({ ask, cameraStatus, onStartCamera, onStopCamera }: Ask
       <div role="status" aria-live="polite" className="sr-only">
         {ask.announcement}
       </div>
+
+      <LanguageSelector ask={ask} />
 
       {ask.captureError && (
         <p
@@ -96,7 +99,15 @@ export function AskPanel({ ask, cameraStatus, onStartCamera, onStopCamera }: Ask
 
           {sending && <SendingView question={ask.question.trim()} />}
 
-          {answered && ask.result && <AnswerView result={ask.result} onAskAnother={ask.askAnother} />}
+          {answered && ask.result && (
+            <AnswerView
+              result={ask.result}
+              onAskAnother={ask.askAnother}
+              output={ask.output}
+              onListen={ask.listenToAnswer}
+              languageNotes={ask.answerLanguageNotes}
+            />
+          )}
 
           {failed && ask.sendError && (
             <SendFailure

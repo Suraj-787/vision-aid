@@ -87,31 +87,74 @@ Gemini server) plus mocked-API browser tests. The answer has five fields
 the richer intent/confidence schema is deferred to Milestone 6. Testing against
 the real Gemini API with your chosen `GEMINI_MODEL` is still outstanding.
 
-## Milestone 6 — Accessibility tools
-- Text reading (signs, notices, labels) with retake guidance.
-- Expiry-date extraction + **deterministic** parsing and comparison (unit-tested
-  rules in `docs/architecture.md`; MFG never treated as expiry).
-- Indian currency identification (₹10, ₹20, ₹50, ₹100, ₹200, ₹500), uncertain
-  result when evidence is insufficient, no authenticity claims.
-- Medicine-label reading (name, expiry, and visible printed dosage text read
-  verbatim as "the label says…"), with no dose recommendations, prescriptions,
-  suitability advice or interpretation.
-- Optional quick-action shortcuts ("Read text", "Check expiry", "Identify note").
-- Task-specific safety rules applied after the model response.
+## Milestone 6 — Structured response processing and deterministic tools ✅ (implemented 2026-11-06; awaiting review)
+- One request now also returns an `intent` (7 allowed values), a qualitative
+  `confidence`, and structured `expiry` and `currency` blocks; everything is
+  validated on the server and again in the browser.
+- **Deterministic expiry checking** in TypeScript (`src/lib/ask/{dates,expiry}.ts`):
+  `expired` / `not_expired` / `unclear`, date-only comparison, MFG never treated as
+  expiry, month/year and ambiguous formats handled with stated assumptions,
+  nothing invented.
+- **Banknote handling** (`currency.ts`): ₹10–₹500 only, value shown only when
+  supported by evidence, otherwise uncertain; never an authenticity claim.
+- **Printed text and medicine labels**: printed text and instructions are copied
+  as printed and shown separately from the AI's own words; advice, dosing and
+  suitability claims are removed deterministically.
+- **Deterministic safety guards and post-processing** (`safety.ts`,
+  `postprocess.ts`), with every removal disclosed to the user.
+- Answer view extended with an expiry card, a banknote card, an intent and
+  confidence line, a low-confidence banner and a "changes VisionAid made" note.
+- Requests carry the user's local date (`local_date`) so "today" is right near
+  midnight in any time zone.
 
-**Acceptance:** Controlled test sets for each tool pass the checks in
-`docs/testing-checklist.md`, including all red-team prompts.
+**Acceptance:** Controlled tests for each tool pass (automated, plus the manual
+checks in `docs/testing-checklist.md` on real items); the model's wrong or
+forbidden claims never appear as confirmed results; the 5 Milestone 5 fields are
+unchanged.
 
-## Milestone 7 — Multilingual support
-- English, Hindi, Kannada for questions, answers and UI strings.
-- Evaluate Web Speech recognition per language and device; record gaps.
-- Evaluate `speechSynthesis` voices per language and device; define the
-  no-voice fallback.
-- Optional Sarvam STT behind the provider interface via `POST /api/stt`
-  (requires approval, `SARVAM_API_KEY`, verified API details, privacy-notice update).
+**As built / deviations:** details in `docs/ask-api.md`. Not built: the optional
+quick-action shortcuts ("Read text", "Check expiry", "Identify note"), because the
+single free-form question already covers them and they add UI without adding
+capability; they can be added later if wanted. Text reading has no dedicated
+retake-guidance logic beyond the model's own wording and the advisory image
+checks. Spoken answers remain unscheduled. Real-device and real-item accuracy is
+not yet measured (Milestone 8).
 
-**Acceptance:** A repeatable test set is run in all three languages; results and
-known gaps are recorded.
+## Milestone 7 — Voice interaction and multilingual accessibility ✅ (implemented 2026-11-06; awaiting review)
+
+Delivered:
+- **Spoken answers** with `speechSynthesis`: Listen to answer, Pause/Resume (where
+  the device honours pause), Stop speaking. Never automatic. Spoken text is built
+  from the validated result only (answer, what is unclear, the app's own expiry or
+  banknote statement), not from metadata or UI text. One playback at a time; speech
+  stops on Cancel/Done, Retake, a new question or request, hidden page, `pagehide`
+  and unmount; recognition and synthesis never run together.
+- **Languages** English (India), Hindi, Kannada: one accessible selector drives the
+  recognition `lang`, the new optional allow-listed `response_language` request
+  field (same single Gemini call, no translation call; older clients unaffected),
+  and voice-availability messages. A missing voice or an answer in a different
+  language than requested is stated plainly; nothing is silently switched and
+  Hindi/Kannada text is never given to an English voice.
+- **Multilingual printed text**: instructions to copy Devanagari/Kannada print in
+  its original script (no transliteration, translation or correction,
+  `[unreadable]` for gaps), shown unchanged with the right `lang` attribute; same
+  request, no OCR service. Conservative Hindi/Kannada versions of the safety guards.
+- **Sarvam decision**: evaluated, **not integrated** (no key, no route, no new
+  dependency); documented as a future option in `docs/architecture.md`.
+- Privacy notice, page footer, README, API/architecture/testing docs updated.
+- Fix found by the new browser tests: a double tap on Start speaking started
+  recognition twice (`useSpeechInput.start` is now idempotent).
+
+Known gaps: see `docs/testing-checklist.md` ("Milestone 7") and "Known
+limitations" in the final report. In short: real Hindi/Kannada recognition,
+voices and printed-text reading are **not verified on any physical device**;
+VisionAid's own notices stay English; Indic dates are `unclear`; the Hindi and
+Kannada guard word lists are unreviewed by native speakers.
+
+**Acceptance (automated, met):** unit tests for spoken text, language validation,
+voice selection, playback lifecycle, response-language handling and multilingual
+text preservation; browser tests with mocked speech APIs. **Acceptance (physical,
+open):** the manual language/device matrix in the checklist has not been run.
 
 ## Milestone 8 — Reliability and evaluation
 - Calibrate image-quality checks on real devices; decide block vs warn thresholds.

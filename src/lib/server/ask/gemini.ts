@@ -1,6 +1,7 @@
 import "server-only";
 import { GoogleGenAI } from "@google/genai";
-import { buildUserText, RESPONSE_JSON_SCHEMA, SYSTEM_INSTRUCTION } from "@/lib/server/ask/prompt";
+import { buildSystemInstruction, buildUserText, RESPONSE_JSON_SCHEMA } from "@/lib/server/ask/prompt";
+import type { SupportedLang } from "@/lib/speech/types";
 
 export const DEFAULT_GEMINI_TIMEOUT_MS = 30_000;
 
@@ -10,6 +11,8 @@ export interface GeminiInput {
   /** Raw base64 of a verified JPEG. */
   imageBase64: string;
   question: string;
+  /** Requested answer language (validated allow-list), or null/undefined to follow the question. */
+  responseLanguage?: SupportedLang | null;
 }
 
 export interface GeminiOutput {
@@ -41,7 +44,7 @@ export function createGeminiClient(options: GeminiClientOptions = {}): GeminiCli
   const timeoutMs = options.timeoutMs ?? DEFAULT_GEMINI_TIMEOUT_MS;
 
   return {
-    async generate({ apiKey, model, imageBase64, question }) {
+    async generate({ apiKey, model, imageBase64, question, responseLanguage }) {
       const ai = new GoogleGenAI({
         apiKey,
         httpOptions: {
@@ -64,7 +67,7 @@ export function createGeminiClient(options: GeminiClientOptions = {}): GeminiCli
           },
         ],
         config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
+          systemInstruction: buildSystemInstruction(responseLanguage ?? null),
           responseMimeType: "application/json",
           responseJsonSchema: RESPONSE_JSON_SCHEMA,
           abortSignal: AbortSignal.timeout(timeoutMs),

@@ -20,13 +20,49 @@ export const toBase64 = (bytes: Uint8Array): string => Buffer.from(bytes).toStri
 
 export const PNG_BYTES = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
 
-export const VALID_ANSWER = {
+/** A valid structured reply from the model (what Gemini returns). */
+export const VALID_MODEL_OUTPUT = {
+  intent: "text_reading",
   answer: "I can see a white box with a printed label.",
   details: "The box is on a wooden table.",
   uncertainty: null,
+  confidence: "high",
   printed_text: "Paracetamol 500 mg",
   printed_instructions: null,
+  currency: { denomination: null, currency: null, evidence: null },
+  expiry: { expiry_date: null, expiry_kind: null, manufacturing_date: null, date_text: null },
 };
+
+/** What /api/ask returns for VALID_MODEL_OUTPUT after post-processing. */
+export const VALID_ANSWER = {
+  intent: "text_reading",
+  answer: "I can see a white box with a printed label.",
+  details: "The box is on a wooden table.",
+  uncertainty: null,
+  confidence: "high",
+  printed_text: "Paracetamol 500 mg",
+  printed_instructions: null,
+  currency_check: null,
+  expiry_check: null,
+  notices: [],
+  adjustments: [],
+};
+
+/** VALID_MODEL_OUTPUT with some fields replaced (shallow, with nested currency/expiry merged). */
+export function modelOutput(
+  overrides: Record<string, unknown> & {
+    currency?: Record<string, unknown>;
+    expiry?: Record<string, unknown>;
+  } = {},
+) {
+  const { currency, expiry, ...rest } = overrides;
+  return {
+    ...VALID_MODEL_OUTPUT,
+    ...rest,
+    currency: { ...VALID_MODEL_OUTPUT.currency, ...currency },
+    expiry: { ...VALID_MODEL_OUTPUT.expiry, ...expiry },
+  };
+}
 
 export function askRequest(
   body: unknown,

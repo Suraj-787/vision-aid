@@ -4,7 +4,10 @@ import {
   type AskErrorBody,
   type AskServerErrorCode,
 } from "@/lib/ask/ask-api";
-import { parseModelText } from "@/lib/ask/ask-result";
+import { parseAskResult } from "@/lib/ask/ask-result";
+import { resolveToday } from "@/lib/ask/dates";
+import { parseModelText } from "@/lib/ask/model-output";
+import { postProcess } from "@/lib/ask/postprocess";
 import type { AskConfig } from "@/lib/server/ask/config";
 import { classifyUpstreamError, describeUpstreamError } from "@/lib/server/ask/errors";
 import type { GeminiClient } from "@/lib/server/ask/gemini";
@@ -92,7 +95,7 @@ async function handleAskUnsafe(request: Request, deps: AskDeps): Promise<Respons
 
   const validation = validateAskRequest(body.text);
   if (!validation.ok) return failure(validation.code, deps);
-  const { imageBase64, question, imageBytes } = validation.value;
+  const { imageBase64, question, imageBytes, localDate, responseLanguage } = validation.value;
 
   // Only one question per client at a time; checked before a rate-limit slot is spent.
   const key = clientKey(request.headers);
@@ -113,6 +116,7 @@ async function handleAskUnsafe(request: Request, deps: AskDeps): Promise<Respons
       model: config.model,
       imageBase64,
       question,
+      responseLanguage,
     });
 
     if (output.blockReason) {
@@ -129,8 +133,21 @@ async function handleAskUnsafe(request: Request, deps: AskDeps): Promise<Respons
       return failure("INVALID_MODEL_RESPONSE", deps);
     }
 
-    deps.log(`[ask] answered in ${deps.now() - started} ms (image ${Math.round(imageBytes / 1024)} KB)`);
-    return Response.json(parsed.result, { status: 200, headers: SAFE_HEADERS });
+    // Deterministic post-processing: expiry/currency checks and safety guards. The
+    // device's local date (when plausible) is "today" for the expiry comparison.
+    const today = resolveToday(localDate, deps.now());
+    const result = postProcess(parsed.output, { today: today.date, todaySource: today.source });
+
+    // Defence in depth: what we send must pass the same validation the browser applies.
+    if (!parseAskResult(result)) {
+      deps.log("[ask] post-processed result failed validation");
+      return failure("INVALID_MODEL_RESPONSE", deps);
+    }
+
+    deps.log(
+      `[ask] answered in ${deps.now() - started} ms (image ${Math.round(imageBytes / 1024)} KB, intent ${result.intent})`,
+    );
+    return Response.json(result, { status: 200, headers: SAFE_HEADERS });
   } catch (err) {
     const code = classifyUpstreamError(err);
     deps.log(`[ask] upstream error: ${describeUpstreamError(err)}`);

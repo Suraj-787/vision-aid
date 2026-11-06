@@ -69,6 +69,8 @@ export function useSpeechInput() {
 
   const start = useCallback(
     (options: StartSpeechOptions) => {
+      // A second tap in the same moment must not start a second recognition.
+      if (sessionRef.current) return false;
       abort();
       setError(null);
       devLog("speech", `starting recognition (lang ${options.lang})`);

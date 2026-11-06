@@ -5,11 +5,17 @@ import { postAsk } from "./client.ts";
 import { ASK_SERVER_ERRORS } from "./ask-api.ts";
 
 const VALID = {
+  intent: "scene_description",
   answer: "It is a red mug.",
   details: null,
   uncertainty: null,
+  confidence: "medium",
   printed_text: null,
   printed_instructions: null,
+  currency_check: null,
+  expiry_check: null,
+  notices: [],
+  adjustments: [],
 };
 
 const bytes = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 0xff, 0xd9]);
@@ -44,19 +50,36 @@ describe("blobToBase64", () => {
 });
 
 describe("postAsk request", () => {
-  it("sends exactly one JSON POST to /api/ask with only image and question", async () => {
+  it("sends exactly one JSON POST to /api/ask with only image, question and the local date", async () => {
     const { impl, seen } = fakeFetch(() => jsonResponse(200, VALID));
-    await postAsk({ image: image(), question: "What is this?", fetchImpl: impl });
+    await postAsk({ image: image(), question: "What is this?", fetchImpl: impl, now: () => new Date(2026, 10, 6, 23, 59) });
     assert.equal(seen.length, 1);
     assert.equal(seen[0].url, "/api/ask");
     assert.equal(seen[0].init.method, "POST");
     assert.equal((seen[0].init.headers as Record<string, string>)["Content-Type"], "application/json");
     const body = JSON.parse(String(seen[0].init.body));
-    assert.deepEqual(Object.keys(body).sort(), ["image", "question"]);
+    assert.deepEqual(Object.keys(body).sort(), ["image", "local_date", "question"]);
+    assert.equal(body.local_date, "2026-11-06"); // the device's own calendar date, even at 23:59
     assert.equal(body.image, Buffer.from(bytes).toString("base64"));
     assert.equal(body.question, "What is this?");
     assert.equal(seen[0].init.cache, "no-store");
     assert.equal(seen[0].init.credentials, "same-origin");
+  });
+});
+
+describe("postAsk response language (Milestone 7)", () => {
+  it("sends response_language only when one is given, and only the supported code", async () => {
+    const { impl, seen } = fakeFetch(() => jsonResponse(200, VALID));
+    await postAsk({ image: image(), question: "q", responseLanguage: "hi-IN", fetchImpl: impl, now: () => new Date(2026, 10, 6, 12) });
+    const body = JSON.parse(String(seen[0].init.body));
+    assert.deepEqual(Object.keys(body).sort(), ["image", "local_date", "question", "response_language"]);
+    assert.equal(body.response_language, "hi-IN");
+  });
+
+  it("omits the field when no language is given (the request is exactly as before)", async () => {
+    const { impl, seen } = fakeFetch(() => jsonResponse(200, VALID));
+    await postAsk({ image: image(), question: "q", fetchImpl: impl });
+    assert.deepEqual(Object.keys(JSON.parse(String(seen[0].init.body))).sort(), ["image", "local_date", "question"]);
   });
 });
 
@@ -68,7 +91,7 @@ describe("postAsk success", () => {
   });
 
   it("rejects a 200 whose body is not a valid result", async () => {
-    for (const body of [{}, { answer: "" }, { answer: "x" }, [], "text", null, { text: "hi" }]) {
+    for (const body of [{}, { answer: "" }, { answer: "x" }, [], "text", null, { text: "hi" }, { ...VALID, intent: "banana" }, { ...VALID, confidence: "certain" }, { ...VALID, expiry_check: { status: "safe" } }]) {
       const { impl } = fakeFetch(() => jsonResponse(200, body));
       const outcome = await postAsk({ image: image(), question: "q", fetchImpl: impl });
       assert.equal(outcome.ok, false);

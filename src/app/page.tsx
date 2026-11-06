@@ -46,7 +46,7 @@ export default function Home() {
         <div className="mx-auto w-full max-w-3xl px-4 py-5 text-sm text-muted sm:px-6">
           Early experimental build. Tapping Ask sends your photo and question to
           Google&apos;s Gemini service to get an answer; nothing is sent
-          before that. Speech input uses your browser&apos;s speech service.
+          before that. Speech input and some read-aloud voices may use your browser&apos;s online speech service.
         </div>
       </footer>
     </>

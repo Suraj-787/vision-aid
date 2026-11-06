@@ -29,6 +29,15 @@ export function PrivacyNotice() {
         provider) to turn it into text. VisionAid receives only the text. You
         can always type your question instead.
       </p>
+      <p className="mt-2">
+        <strong>Reading answers aloud</strong> uses your device&apos;s own
+        voices, only when you tap Listen. Some voices (marked in the message
+        under the language choice) run through an online service run by your
+        browser or device maker, which would then receive the answer text.
+        VisionAid does not store or log what is spoken. If you choose Hindi or
+        Kannada, the language you chose is sent with your photo and question to
+        Google&apos;s Gemini service so it can answer in that language.
+      </p>
       <ul className="mt-3 list-disc space-y-1 pl-5">
         <li>The camera and microphone stay off until you choose to start them.</li>
         <li>

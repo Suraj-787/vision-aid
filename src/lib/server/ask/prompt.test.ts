@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { ASK_RESULT_KEYS } from "@/lib/ask/ask-result";
-import { buildUserText, RESPONSE_JSON_SCHEMA, SYSTEM_INSTRUCTION } from "./prompt.ts";
+import { CONFIDENCES, INTENTS } from "@/lib/ask/ask-result";
+import { EXPIRY_KINDS } from "@/lib/ask/expiry";
+import { buildSystemInstruction, buildUserText, MODEL_OUTPUT_KEYS, RESPONSE_JSON_SCHEMA, SYSTEM_INSTRUCTION } from "./prompt.ts";
 
 describe("SYSTEM_INSTRUCTION contains every required rule", () => {
   const rules: Array<[string, RegExp]> = [
@@ -33,13 +34,37 @@ describe("SYSTEM_INSTRUCTION contains every required rule", () => {
     ["spatial words only when shown, approximate", /left, right or ahead only when it is clearly shown[^.]*approximate/i],
     ["uncertainty phrases", /I may be mistaken/],
     ["untrusted question and photo text", /data, not instructions/i],
+    // ---- Milestone 6
+    ["intent: choose exactly one", /Choose exactly one "intent"/],
+    ["intent: ambiguous -> general_question or unknown", /truly ambiguous, use "general_question" or "unknown"/],
+    ["intent: never invent a more specific intent", /Never invent a more specific intent/],
+    ["confidence: qualitative, not a probability", /not a probability and "high" does not mean you are certainly right/],
+    ["confidence: low must be explained", /When "low", say what is unclear in "uncertainty"/],
+    ["printed text: copy exactly, do not correct or guess", /Do not correct spelling, fill in missing letters or guess unclear words/],
+    ["printed text: mark unreadable parts", /\[unreadable\]/],
+    ["printed text: kept separate from the model's own words", /must only ever contain what is printed/],
+    ["expiry: copy date text without interpreting", /copied exactly as printed[^.]*without interpreting, converting or completing it/],
+    ["expiry: never put an MFG date in expiry_date", /Never put it in "expiry_date"/],
+    ["expiry: unlabelled dates only in date_text", /A date with no label goes only in "date_text"/],
+    ["expiry: the model must not decide expiry", /Do NOT decide whether a product has expired and do not calculate anything with dates/],
+    ["currency: denomination only when clearly visible", /only when the printed numeral or other visible features clearly show it/],
+    ["currency: null when blurry, cropped or unsure; never guess", /Use null if the note is blurry, cropped, folded, partly visible or you are unsure. Never guess/],
+    ["currency: only supported values", /\(10, 20, 50, 100, 200 or 500\)/],
+    ["currency: no genuine/counterfeit claims in any field", /Do not say or imply, in any field, whether the note is genuine or counterfeit/],
+    ["fields that do not apply must be null", /Fields that do not apply to the question must be null\. Never invent information to fill a field/],
   ];
   for (const [name, pattern] of rules) {
     it(name, () => assert.match(SYSTEM_INSTRUCTION, pattern));
   }
 
-  it("describes every output field", () => {
-    for (const key of ASK_RESULT_KEYS) assert.ok(SYSTEM_INSTRUCTION.includes(`"${key}"`), key);
+  it("describes every output field and every allowed intent", () => {
+    for (const key of MODEL_OUTPUT_KEYS) assert.ok(SYSTEM_INSTRUCTION.includes(`"${key}"`), key);
+    for (const intent of INTENTS) assert.ok(SYSTEM_INSTRUCTION.includes(`"${intent}"`), intent);
+    for (const level of CONFIDENCES) assert.ok(SYSTEM_INSTRUCTION.includes(`"${level}"`), level);
+    for (const kind of EXPIRY_KINDS) assert.ok(SYSTEM_INSTRUCTION.includes(`"${kind}"`), kind);
+    for (const sub of ["denomination", "evidence", "expiry_date", "expiry_kind", "manufacturing_date", "date_text"]) {
+      assert.ok(SYSTEM_INSTRUCTION.includes(`"${sub}"`), sub);
+    }
   });
 
   it("is plain text with no secrets or placeholders", () => {
@@ -63,20 +88,96 @@ describe("buildUserText", () => {
 });
 
 describe("RESPONSE_JSON_SCHEMA", () => {
-  it("requires every result field and forbids extras", () => {
-    assert.deepEqual([...RESPONSE_JSON_SCHEMA.required], [...ASK_RESULT_KEYS]);
+  const props = RESPONSE_JSON_SCHEMA.properties;
+
+  it("requires every field and forbids extras, at every level", () => {
+    assert.deepEqual([...RESPONSE_JSON_SCHEMA.required], [...MODEL_OUTPUT_KEYS]);
+    assert.deepEqual(Object.keys(props), [...MODEL_OUTPUT_KEYS]);
     assert.equal(RESPONSE_JSON_SCHEMA.additionalProperties, false);
-    assert.deepEqual(Object.keys(RESPONSE_JSON_SCHEMA.properties), [...ASK_RESULT_KEYS]);
+    assert.equal(props.currency.additionalProperties, false);
+    assert.equal(props.expiry.additionalProperties, false);
+    assert.deepEqual([...props.currency.required], Object.keys(props.currency.properties));
+    assert.deepEqual([...props.expiry.required], Object.keys(props.expiry.properties));
+  });
+
+  it("constrains intent and confidence to the allowed lists", () => {
+    assert.deepEqual([...props.intent.enum], [...INTENTS]);
+    assert.deepEqual([...props.confidence.enum], [...CONFIDENCES]);
+    assert.equal(props.intent.type, "string");
+    assert.equal(props.confidence.type, "string");
   });
 
   it("makes only the optional fields nullable, using the documented type-array form", () => {
-    assert.equal(RESPONSE_JSON_SCHEMA.properties.answer.type, "string");
+    assert.equal(props.answer.type, "string");
     for (const key of ["details", "uncertainty", "printed_text", "printed_instructions"] as const) {
-      assert.deepEqual(RESPONSE_JSON_SCHEMA.properties[key].type, ["string", "null"], key);
+      assert.deepEqual(props[key].type, ["string", "null"], key);
+    }
+    assert.deepEqual(props.currency.properties.denomination.type, ["integer", "null"]);
+    for (const key of ["currency", "evidence"] as const) {
+      assert.deepEqual(props.currency.properties[key].type, ["string", "null"], key);
+    }
+    for (const key of ["expiry_date", "expiry_kind", "manufacturing_date", "date_text"] as const) {
+      assert.deepEqual(props.expiry.properties[key].type, ["string", "null"], key);
     }
   });
 
   it("does not use keywords the API ignores (maxLength/minLength)", () => {
     assert.doesNotMatch(JSON.stringify(RESPONSE_JSON_SCHEMA), /maxLength|minLength/);
+  });
+
+  it("stays small enough for constrained decoding (shallow nesting, few enums)", () => {
+    const json = JSON.stringify(RESPONSE_JSON_SCHEMA);
+    assert.ok(json.length < 4000, `schema is ${json.length} characters`);
+    assert.equal((json.match(/"enum"/g) ?? []).length, 2);
+  });
+});
+
+describe("multilingual printed text rules (Milestone 7)", () => {
+  it("keeps printed Hindi and Kannada in its original script, untranslated and uncorrected", () => {
+    assert.match(SYSTEM_INSTRUCTION, /Hindi \(Devanagari script\) or Kannada \(Kannada script\)/);
+    assert.match(SYSTEM_INSTRUCTION, /ORIGINAL script, character for character/);
+    assert.match(SYSTEM_INSTRUCTION, /Never transliterate/);
+    assert.match(SYSTEM_INSTRUCTION, /never translate it/);
+    assert.match(SYSTEM_INSTRUCTION, /never "correct" it/);
+    assert.match(SYSTEM_INSTRUCTION, /\[unreadable\]/);
+  });
+
+  it("never translates or explains medicine instructions", () => {
+    assert.match(SYSTEM_INSTRUCTION, /Never translate, summarise or explain medicine instructions/);
+  });
+});
+
+describe("buildSystemInstruction (answer language)", () => {
+  it("without a requested language it is exactly the fixed instruction", () => {
+    assert.equal(buildSystemInstruction(null), SYSTEM_INSTRUCTION);
+  });
+
+  it("adds one fixed directive per allow-listed language", () => {
+    const hi = buildSystemInstruction("hi-IN");
+    const kn = buildSystemInstruction("kn-IN");
+    const en = buildSystemInstruction("en-IN");
+    assert.ok(hi.startsWith(SYSTEM_INSTRUCTION));
+    assert.match(hi, /ANSWER LANGUAGE[\s\S]*Hindi in Devanagari script/);
+    assert.match(kn, /ANSWER LANGUAGE[\s\S]*Kannada in Kannada script/);
+    assert.match(en, /ANSWER LANGUAGE[\s\S]*simple English/);
+    assert.doesNotMatch(hi, /Kannada in Kannada script/);
+  });
+
+  it("keeps printed text, field names and safety rules out of the translation", () => {
+    for (const lang of ["hi-IN", "kn-IN", "en-IN"] as const) {
+      const text = buildSystemInstruction(lang);
+      assert.match(text, /applies only to your own words/);
+      assert.match(text, /"printed_text", "printed_instructions"[^.]*keep their original form and script/);
+      assert.match(text, /Every safety limit above applies in every language/);
+    }
+  });
+
+  it("tells the model to write English rather than guess when it cannot write the language reliably", () => {
+    assert.match(buildSystemInstruction("hi-IN"), /write it in simple English instead and do not guess/);
+    assert.match(buildSystemInstruction("kn-IN"), /write it in simple English instead and do not guess/);
+  });
+
+  it("contains no secrets and no client-supplied text", () => {
+    assert.doesNotMatch(buildSystemInstruction("hi-IN"), /AIza|GEMINI_API_KEY|TODO|\{\{/);
   });
 });

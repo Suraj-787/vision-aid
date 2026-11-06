@@ -3,7 +3,7 @@
 import { ActionButton } from "@/components/ActionButton";
 import type { useAsk } from "@/hooks/useAsk";
 import { MAX_QUESTION_CHARS } from "@/lib/ask/ask-flow";
-import { SUPPORTED_LANGS, type SupportedLang } from "@/lib/speech/types";
+import { langInfo } from "@/lib/speech/types";
 
 type AskController = ReturnType<typeof useAsk>;
 
@@ -44,32 +44,11 @@ export function QuestionInput({ ask }: { ask: AskController }) {
       {ask.speech.supported ? (
         <div className="space-y-2">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="space-y-1">
-              <label htmlFor="speech-lang" className="block text-sm font-semibold">
-                Speech language
-              </label>
-              <select
-                id="speech-lang"
-                value={ask.lang}
-                disabled={listening}
-                onChange={(event) => {
-                  const match = SUPPORTED_LANGS.find((l) => l.code === event.target.value);
-                  if (match) ask.setLang(match.code as SupportedLang);
-                }}
-                className="min-h-12 w-full rounded-lg border-2 border-border bg-background px-3 text-base text-foreground sm:w-auto"
-              >
-                {SUPPORTED_LANGS.map((l) => (
-                  <option key={l.code} value={l.code}>
-                    {l.label}
-                  </option>
-                ))}
-              </select>
-            </div>
             <ActionButton
               onClick={listening ? ask.stopListening : ask.startListening}
               disabled={!listening && !ask.can.listen}
             >
-              {listening ? "Stop speaking" : "Start speaking"}
+              {listening ? "Stop speaking" : `Start speaking (${langInfo(ask.lang).englishName})`}
             </ActionButton>
           </div>
 
@@ -81,8 +60,8 @@ export function QuestionInput({ ask }: { ask: AskController }) {
 
           <p className="text-sm text-muted">
             Speech recognition is done by your browser. It may send your voice to its own speech
-            service to turn it into text, so use the typed box if you prefer. Hindi and Kannada
-            support varies by browser and has not been evaluated yet.
+            service to turn it into text, so use the typed box if you prefer. It listens for the
+            language chosen above; Hindi and Kannada support varies by browser and device.
           </p>
         </div>
       ) : (

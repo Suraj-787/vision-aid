@@ -7,7 +7,9 @@ import {
   type AskErrorCode,
 } from "@/lib/ask/ask-api";
 import { parseAskResult, type AskResult } from "@/lib/ask/ask-result";
+import { toLocalIsoDate } from "@/lib/ask/dates";
 import { blobToBase64 } from "@/lib/image/base64";
+import type { SupportedLang } from "@/lib/speech/types";
 
 /** A failed ask, safe to show: the message never contains request content. */
 export interface AskFailure {
@@ -28,11 +30,15 @@ export const DEFAULT_CLIENT_TIMEOUT_MS = 45_000;
 interface PostAskOptions {
   image: Blob;
   question: string;
+  /** The language the user wants the answer in. Omitted from the request when not given. */
+  responseLanguage?: SupportedLang;
   /** Aborting (Cancel, Retake, leaving the page) resolves to code "ABORTED". */
   signal?: AbortSignal;
   timeoutMs?: number;
   /** Tests only. */
   fetchImpl?: typeof fetch;
+  /** Tests only: the clock used for the local date sent with the request. */
+  now?: () => Date;
 }
 
 function clientFailure(code: AskClientErrorCode): AskOutcome {
@@ -69,7 +75,13 @@ export async function postAsk(options: PostAskOptions): Promise<AskOutcome> {
     const response = await fetchImpl(ASK_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image: base64, question }),
+      // local_date: the user's calendar date, so an expiry check is right near midnight.
+      body: JSON.stringify({
+        image: base64,
+        question,
+        local_date: toLocalIsoDate((options.now ?? (() => new Date()))()),
+        ...(options.responseLanguage ? { response_language: options.responseLanguage } : {}),
+      }),
       signal: controller.signal,
       cache: "no-store",
       credentials: "same-origin",

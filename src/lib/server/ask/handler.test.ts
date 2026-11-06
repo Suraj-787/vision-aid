@@ -7,7 +7,7 @@ import { SlidingWindowLimiter } from "@/lib/server/rate-limit";
 import { readAskConfig, type AskConfig } from "./config.ts";
 import type { GeminiClient, GeminiInput, GeminiOutput } from "./gemini.ts";
 import { handleAsk, type AskDeps } from "./handler.ts";
-import { askRequest, makeJpeg, PNG_BYTES, toBase64, VALID_ANSWER } from "./test-utils.ts";
+import { askRequest, makeJpeg, modelOutput, PNG_BYTES, toBase64, VALID_ANSWER, VALID_MODEL_OUTPUT } from "./test-utils.ts";
 
 const API_KEY = "SECRETKEY-0123456789-abcdefghijklmnop";
 const QUESTION = "QSECRET what does the medicine box say?";
@@ -26,7 +26,7 @@ interface Harness {
 
 function harness(
   generate: (input: GeminiInput) => Promise<GeminiOutput> = async () => ({
-    text: JSON.stringify(VALID_ANSWER),
+    text: JSON.stringify(VALID_MODEL_OUTPUT),
     finishReason: "STOP",
   }),
   overrides: Partial<AskDeps> = {},
@@ -94,7 +94,7 @@ describe("successful request", () => {
   });
 
   it("strips fields the model was not asked for", async () => {
-    const h = harness(async () => ({ text: JSON.stringify({ ...VALID_ANSWER, system: "x", __proto__x: 1 }) }));
+    const h = harness(async () => ({ text: JSON.stringify({ ...VALID_MODEL_OUTPUT, system: "x", __proto__x: 1 }) }));
     const r = await call(h, valid());
     assert.deepEqual(Object.keys(r.json ?? {}).sort(), Object.keys(VALID_ANSWER).sort());
   });
@@ -207,7 +207,7 @@ describe("rate limiting and duplicate prevention", () => {
     const gate = new Promise<void>((r) => (release = r));
     const h = harness(async () => {
       await gate;
-      return { text: JSON.stringify(VALID_ANSWER) };
+      return { text: JSON.stringify(VALID_MODEL_OUTPUT) };
     });
     const first = call(h, valid());
     await new Promise((r) => setTimeout(r, 10));
@@ -291,14 +291,14 @@ describe("invalid or unusable model output -> controlled error, never raw conten
     ["empty text", { text: "" }],
     ["no text", { text: undefined, finishReason: "STOP" }],
     ["plain prose", { text: `${MODEL_TEXT_MARKER} here is a nice answer` }],
-    ["fenced JSON", { text: "```json\n" + JSON.stringify(VALID_ANSWER) + "\n```" }],
+    ["fenced JSON", { text: "```json\n" + JSON.stringify(VALID_MODEL_OUTPUT) + "\n```" }],
     ["truncated JSON", { text: `{"answer": "${MODEL_TEXT_MARKER} cut off` }],
     ["JSON array", { text: "[]" }],
-    ["answer missing", { text: JSON.stringify({ details: MODEL_TEXT_MARKER, uncertainty: null, printed_text: null, printed_instructions: null }) }],
-    ["answer empty", { text: JSON.stringify({ ...VALID_ANSWER, answer: "  " }) }],
-    ["wrong field type", { text: JSON.stringify({ ...VALID_ANSWER, details: { x: MODEL_TEXT_MARKER } }) }],
+    ["answer missing", { text: JSON.stringify({ ...modelOutput({ details: MODEL_TEXT_MARKER }), answer: undefined }) }],
+    ["answer empty", { text: JSON.stringify({ ...VALID_MODEL_OUTPUT, answer: "  " }) }],
+    ["wrong field type", { text: JSON.stringify({ ...VALID_MODEL_OUTPUT, details: { x: MODEL_TEXT_MARKER } }) }],
     ["incomplete (fields missing)", { text: JSON.stringify({ answer: `${MODEL_TEXT_MARKER} only an answer` }) }],
-    ["answer too long", { text: JSON.stringify({ ...VALID_ANSWER, answer: MODEL_TEXT_MARKER.repeat(500) }) }],
+    ["answer too long", { text: JSON.stringify({ ...VALID_MODEL_OUTPUT, answer: MODEL_TEXT_MARKER.repeat(500) }) }],
   ];
   for (const [name, output] of bad) {
     it(`${name} -> 502 INVALID_MODEL_RESPONSE`, async () => {
@@ -392,5 +392,221 @@ describe("privacy: no secrets or request content leak into responses or logs", (
     await call(h, valid());
     assert.ok(h.logs.length >= 1);
     for (const line of h.logs) assert.ok(line.length < 120 && line.startsWith("[ask]"), line);
+  });
+});
+
+describe("Milestone 6: post-processing through the handler", () => {
+  const FIXED_NOW = Date.UTC(2026, 10, 6, 12, 0, 0); // 6 November 2026, 12:00 UTC
+  const fixedNow = { now: () => FIXED_NOW };
+  const expiryModel = (over: Record<string, unknown> = {}) =>
+    modelOutput({
+      intent: "expiry_date",
+      answer: "The expiry date is printed as 08/2027.",
+      expiry: { expiry_date: "EXP 08/2027", expiry_kind: "expiry", manufacturing_date: "MFG 02/2026", date_text: "MFG 02/2026 EXP 08/2027" },
+      ...over,
+    });
+  const ask = (h: Harness, body: Record<string, unknown> = {}) =>
+    call(h, askRequest({ image: IMAGE, question: "q", ...body }));
+  const answerOf = (r: { json: Record<string, unknown> | null }) => {
+    const parsed = parseAskResult(r.json);
+    assert.ok(parsed, "response must pass the browser's validation");
+    return parsed;
+  };
+
+  it("returns the richer structured answer, accepted by the same validation the browser uses", async () => {
+    const h = harness(async () => ({ text: JSON.stringify(expiryModel()) }), fixedNow);
+    const r = await ask(h);
+    assert.equal(r.status, 200);
+    const a = answerOf(r);
+    assert.equal(a.intent, "expiry_date");
+    assert.equal(a.confidence, "high");
+    assert.equal(a.expiry_check?.status, "not_expired");
+    assert.equal(a.expiry_check?.printed_text, "EXP 08/2027");
+    assert.equal(a.expiry_check?.manufacturing_text, "MFG 02/2026");
+    assert.ok(a.notices.includes("expiry_limits"));
+    assert.equal(h.calls.length, 1, "still exactly one Gemini request");
+  });
+
+  it("uses the device's local date as 'today' and reports it", async () => {
+    const h = harness(async () => ({ text: JSON.stringify(expiryModel({ expiry: { expiry_date: "30/11/2026", expiry_kind: "expiry", manufacturing_date: null, date_text: null } })) }), fixedNow);
+    const onTheDay = answerOf(await ask(h, { local_date: "2026-11-30" }));
+    // 30 Nov is 24 days from FIXED_NOW, beyond the allowed skew: the server date is used instead.
+    assert.equal(onTheDay.expiry_check?.checked_on_source, "server");
+    assert.equal(onTheDay.expiry_check?.checked_on, "2026-11-06");
+    const plausible = answerOf(await ask(h, { local_date: "2026-11-07" }));
+    assert.equal(plausible.expiry_check?.checked_on, "2026-11-07");
+    assert.equal(plausible.expiry_check?.checked_on_source, "device");
+    assert.equal(plausible.expiry_check?.status, "not_expired");
+  });
+
+  it("near midnight the user's own date decides (India is already on the next day)", async () => {
+    const late = Date.UTC(2026, 10, 15, 20, 30); // 15 Nov 20:30 UTC = 16 Nov 02:00 IST
+    const h = harness(async () => ({ text: JSON.stringify(expiryModel({ expiry: { expiry_date: "15/11/2026", expiry_kind: "expiry", manufacturing_date: null, date_text: null } })) }), { now: () => late });
+    const india = answerOf(await ask(h, { local_date: "2026-11-16" }));
+    assert.equal(india.expiry_check?.status, "expired"); // 16 Nov: the printed 15 Nov has passed
+    assert.equal(india.expiry_check?.checked_on_source, "device");
+    const noDate = answerOf(await ask(h));
+    assert.equal(noDate.expiry_check?.status, "not_expired"); // the server's UTC date is still 15 Nov
+    assert.equal(noDate.expiry_check?.checked_on_source, "server");
+  });
+
+  it("ignores an implausible or impossible device date instead of trusting it", async () => {
+    const h = harness(async () => ({ text: JSON.stringify(expiryModel()) }), fixedNow);
+    for (const local_date of ["2030-01-01", "1999-12-31", "2026-02-30", "2026-13-01"]) {
+      const a = answerOf(await ask(h, { local_date }));
+      assert.equal(a.expiry_check?.checked_on_source, "server", local_date);
+      assert.equal(a.expiry_check?.checked_on, "2026-11-06", local_date);
+    }
+  });
+
+  it("rejects a malformed local_date field", async () => {
+    const h = harness(undefined, fixedNow);
+    for (const local_date of ["2026-1-6", "06/11/2026", 20261106, "", "today", ["2026-11-06"], {}]) {
+      const r = await ask(h, { local_date });
+      assert.equal(r.status, 400, JSON.stringify(local_date));
+      assert.equal(errorCode(r), "INVALID_REQUEST");
+    }
+    assert.equal(h.calls.length, 0);
+  });
+
+  it("local_date is optional and null is accepted", async () => {
+    const h = harness(undefined, fixedNow);
+    assert.equal((await ask(h)).status, 200);
+    assert.equal((await ask(h, { local_date: null })).status, 200);
+  });
+
+  it("replaces a wrong expiry conclusion from the model with the deterministic result", async () => {
+    const h = harness(async () => ({ text: JSON.stringify(expiryModel({ answer: "This product has expired." })) }), fixedNow);
+    const a = answerOf(await ask(h));
+    assert.equal(a.expiry_check?.status, "not_expired");
+    assert.doesNotMatch(a.answer, /has expired/);
+    assert.ok(a.adjustments.includes("expiry_conclusion_replaced"));
+  });
+
+  it("a manufacturing date alone is unclear through the whole route", async () => {
+    const h = harness(async () => ({ text: JSON.stringify(expiryModel({ expiry: { expiry_date: null, expiry_kind: null, manufacturing_date: "MFG 03/2019", date_text: "MFG 03/2019" } })) }), fixedNow);
+    const a = answerOf(await ask(h));
+    assert.equal(a.expiry_check?.status, "unclear");
+    assert.match(a.expiry_check?.explanation ?? "", /not an expiry date/);
+  });
+
+  it("a banknote value the model suggests but the checks do not support is withheld", async () => {
+    const h = harness(async () => ({ text: JSON.stringify(modelOutput({ intent: "currency_identification", answer: "It is a ₹2000 note.", currency: { denomination: 2000, currency: "INR", evidence: "numeral 2000 visible" } })) }), fixedNow);
+    const a = answerOf(await ask(h));
+    assert.equal(a.currency_check?.status, "uncertain");
+    assert.equal(a.currency_check?.denomination, null);
+    assert.doesNotMatch(a.answer, /2000/);
+  });
+
+  it("an identified note is returned with its evidence and notice", async () => {
+    const h = harness(async () => ({ text: JSON.stringify(modelOutput({ intent: "currency_identification", answer: "This looks like a ₹100 note.", currency: { denomination: 100, currency: "INR", evidence: "numeral 100 and portrait" } })) }), fixedNow);
+    const a = answerOf(await ask(h));
+    assert.equal(a.currency_check?.status, "identified");
+    assert.equal(a.currency_check?.denomination, 100);
+    assert.ok(a.notices.includes("currency_limits"));
+  });
+
+  it("removes safety and medical claims that the model slipped in", async () => {
+    const h = harness(async () => ({ text: JSON.stringify(modelOutput({ intent: "scene_description", answer: "A zebra crossing. It is safe to cross. You should take two tablets." })) }), fixedNow);
+    const a = answerOf(await ask(h));
+    assert.doesNotMatch(a.answer, /safe to cross|should take/);
+    assert.ok(a.adjustments.includes("navigation_claim_removed"));
+    assert.ok(a.adjustments.includes("medical_advice_removed"));
+    assert.match(a.answer, /A zebra crossing\./);
+  });
+
+  it("rejects model output with an invalid intent, confidence or shape", async () => {
+    const bad: Array<[string, unknown]> = [
+      ["invalid intent", { ...VALID_MODEL_OUTPUT, intent: "banana" }],
+      ["missing intent", { ...VALID_MODEL_OUTPUT, intent: undefined }],
+      ["invalid confidence", { ...VALID_MODEL_OUTPUT, confidence: "certain" }],
+      ["numeric confidence", { ...VALID_MODEL_OUTPUT, confidence: 0.92 }],
+      ["missing currency block", { ...VALID_MODEL_OUTPUT, currency: undefined }],
+      ["missing expiry block", { ...VALID_MODEL_OUTPUT, expiry: undefined }],
+      ["denomination as text", modelOutput({ currency: { denomination: "500" } })],
+      ["invalid expiry kind", modelOutput({ expiry: { expiry_date: "08/2027", expiry_kind: "mfg" } })],
+      ["over-long evidence", modelOutput({ currency: { denomination: 10, currency: "INR", evidence: "e".repeat(600) } })],
+    ];
+    for (const [name, output] of bad) {
+      const h = harness(async () => ({ text: JSON.stringify(output) }), fixedNow);
+      const r = await ask(h);
+      assert.equal(r.status, 502, name);
+      assert.equal(errorCode(r), "INVALID_MODEL_RESPONSE", name);
+    }
+  });
+
+  it("logs the intent but never the answer, dates or printed text", async () => {
+    const h = harness(async () => ({ text: JSON.stringify(expiryModel({ answer: "SECRETANSWER", printed_text: "SECRETPRINT" })) }), fixedNow);
+    await ask(h);
+    const logs = h.logs.join("\n");
+    assert.match(logs, /intent expiry_date/);
+    assert.ok(!/SECRETANSWER|SECRETPRINT|08\/2027|MFG/.test(logs), logs);
+  });
+});
+
+describe("answer language and multilingual text (Milestone 7)", () => {
+  it("an older client that sends no response_language still works, and Gemini gets null", async () => {
+    const h = harness();
+    const r = await call(h, valid());
+    assert.equal(r.status, 200);
+    assert.equal(h.calls[0].responseLanguage, null);
+  });
+
+  it("passes an allow-listed language to the single Gemini call", async () => {
+    const h = harness();
+    const r = await call(h, askRequest({ image: IMAGE, question: QUESTION, response_language: "kn-IN" }));
+    assert.equal(r.status, 200);
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.calls[0].responseLanguage, "kn-IN");
+  });
+
+  it("rejects an unsupported language before any Gemini call or rate-limit slot is used", async () => {
+    const h = harness();
+    const r = await call(h, askRequest({ image: IMAGE, question: QUESTION, response_language: "fr-FR" }));
+    assert.equal(r.status, 400);
+    assert.equal(errorCode(r), "INVALID_REQUEST");
+    assert.equal(h.calls.length, 0);
+  });
+
+  const HI_LABEL = "पैरासिटामोल 500 मिलीग्राम\nदिन में दो बार";
+  const KN_LABEL = "ಪ್ಯಾರಾಸಿಟಮಾಲ್ 500 ಮಿಗ್ರಾಂ [unreadable]";
+
+  it("returns printed Hindi and Kannada text exactly as the model copied it (no transliteration, no change)", async () => {
+    for (const printed of [HI_LABEL, KN_LABEL]) {
+      const h = harness(async () => ({ text: JSON.stringify(modelOutput({ printed_text: printed })), finishReason: "STOP" }));
+      const r = await call(h, askRequest({ image: IMAGE, question: QUESTION, response_language: "hi-IN" }));
+      assert.equal(r.status, 200);
+      assert.equal(r.json?.printed_text, printed);
+    }
+  });
+
+  it("copies printed Hindi dosage instructions unchanged and keeps them apart from the AI's own words", async () => {
+    const instructions = "भोजन के बाद एक गोली लें";
+    const h = harness(async () => ({
+      text: JSON.stringify(modelOutput({ intent: "medicine_label", answer: "लेबल पर कुछ निर्देश छपे हैं।", printed_instructions: instructions })),
+      finishReason: "STOP",
+    }));
+    const r = await call(h, askRequest({ image: IMAGE, question: QUESTION, response_language: "hi-IN" }));
+    assert.equal(r.json?.printed_instructions, instructions);
+    assert.ok((r.json?.notices as string[]).includes("label_only"));
+  });
+
+  it("removes an unsafe Hindi sentence from the AI's answer and says so", async () => {
+    const h = harness(async () => ({
+      text: JSON.stringify(modelOutput({ answer: "तस्वीर में एक सड़क है। सड़क साफ़ है, आप पार कर सकते हैं।" })),
+      finishReason: "STOP",
+    }));
+    const r = await call(h, askRequest({ image: IMAGE, question: QUESTION, response_language: "hi-IN" }));
+    assert.equal(r.status, 200);
+    assert.doesNotMatch(String(r.json?.answer), /पार कर सकते/);
+    assert.match(String(r.json?.answer), /तस्वीर में एक सड़क है/);
+    assert.ok((r.json?.adjustments as string[]).includes("navigation_claim_removed"));
+  });
+
+  it("does not log the language, question, answer or printed text", async () => {
+    const h = harness(async () => ({ text: JSON.stringify(modelOutput({ printed_text: HI_LABEL })), finishReason: "STOP" }));
+    await call(h, askRequest({ image: IMAGE, question: QUESTION, response_language: "hi-IN" }));
+    const logged = h.logs.join("\n");
+    assert.doesNotMatch(logged, /पैरासिटामोल|hi-IN|QSECRET/);
   });
 });

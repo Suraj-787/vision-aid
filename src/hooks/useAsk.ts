@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState, type RefObject } from "react";
 import { useSpeechInput } from "@/hooks/useSpeechInput";
+import { useSpeechOutput } from "@/hooks/useSpeechOutput";
 import {
   askBlockedReason,
   askReducer,
@@ -19,7 +20,16 @@ import type { AskResult } from "@/lib/ask/ask-result";
 import { devLog } from "@/lib/dev-log";
 import { captureStill, toCaptureError, type CapturedImage } from "@/lib/image/capture";
 import { describeQuality } from "@/lib/image/quality";
-import type { SupportedLang } from "@/lib/speech/types";
+import { answerLanguageNotes } from "@/lib/speech/answer-language";
+import { DEFAULT_LANG, type SupportedLang } from "@/lib/speech/types";
+
+/** What a screen reader says when an answer arrives: the answer, plus the app's own checks. */
+function announcementFor(result: AskResult): string {
+  const parts = [`Answer: ${result.answer}`];
+  if (result.expiry_check) parts.push(result.expiry_check.explanation);
+  if (result.confidence === "low") parts.push("The AI is not confident about this answer.");
+  return parts.join(" ");
+}
 
 interface UseAskOptions {
   videoRef: RefObject<HTMLVideoElement | null>;
@@ -45,7 +55,9 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [result, setResult] = useState<AskResult | null>(null);
   const [sendError, setSendError] = useState<AskFailure | null>(null);
-  const [lang, setLang] = useState<SupportedLang>("en-IN");
+  const [lang, setLang] = useState<SupportedLang>(DEFAULT_LANG);
+  // The answer language that was sent with the current answer (the selector may change afterwards).
+  const [answerLang, setAnswerLang] = useState<SupportedLang>(DEFAULT_LANG);
   const [announcement, setAnnouncement] = useState("");
 
   const speech = useSpeechInput();
@@ -63,6 +75,9 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
   const phase = deriveAskPhase(flow, cameraActive);
 
   const announce = useCallback((message: string) => setAnnouncement(message), []);
+
+  const output = useSpeechOutput({ announce, onBeforeSpeak: onBeforeListen });
+  const { stop: stopOutput, clearError: clearOutputError } = output;
 
   /** Frees the preview object URL (no state change; safe in cleanup). */
   const releaseImage = useCallback(() => {
@@ -84,10 +99,13 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
     requestInFlightRef.current = false;
   }, []);
 
+  // Anything that removes or replaces the answer also stops it being read aloud.
   const clearAnswer = useCallback(() => {
+    stopOutput();
+    clearOutputError();
     setResult(null);
     setSendError(null);
-  }, []);
+  }, [stopOutput, clearOutputError]);
 
   const capture = useCallback(async () => {
     const video = videoRef.current;
@@ -167,6 +185,7 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
 
   const startListening = useCallback(() => {
     if (!canListen(flow) || !speech.supported) return;
+    stopOutput(); // the microphone must not hear the answer being read aloud
     onBeforeListen?.();
     const started = speech.start({
       lang,
@@ -180,7 +199,7 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
       dispatch({ type: "LISTEN_STARTED" });
       announce("Listening. Speak your question.");
     }
-  }, [flow, lang, speech, onBeforeListen, announce]);
+  }, [flow, lang, speech, onBeforeListen, stopOutput, announce]);
 
   const stopListening = useCallback(() => speech.stop(), [speech]);
 
@@ -202,6 +221,7 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
       if (!captured || !(kind === "ask" ? canAsk(flow) : canRetry(flow))) return;
 
       requestInFlightRef.current = true;
+      setAnswerLang(lang);
       const id = ++requestIdRef.current;
       const controller = new AbortController();
       requestAbortRef.current = controller;
@@ -213,6 +233,7 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
       void postAsk({
         image: captured.blob,
         question: flow.question.trim(),
+        responseLanguage: lang,
         signal: controller.signal,
       }).then((outcome) => {
         // Cancelled, retaken, replaced by a newer request, or unmounted: ignore.
@@ -223,7 +244,7 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
           devLog("ask", "answer received");
           setResult(outcome.result);
           dispatch({ type: "SEND_SUCCEEDED" });
-          announce(`Answer: ${outcome.result.answer}`);
+          announce(announcementFor(outcome.result));
         } else {
           devLog("ask", `request failed: ${outcome.error.code}`);
           setSendError(outcome.error);
@@ -232,11 +253,19 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
         }
       });
     },
-    [flow, announce, clearAnswer],
+    [flow, lang, announce, clearAnswer],
   );
 
   const ask = useCallback(() => submit("ask"), [submit]);
   const retry = useCallback(() => submit("retry"), [submit]);
+
+  /** Reads the displayed answer aloud. Only ever called from the Listen button. */
+  const listenToAnswer = useCallback(() => {
+    if (!result) return;
+    abortSpeech(); // recognition and synthesis never run together
+    announce(""); // so a repeated "Stopped" / "Paused" is announced again
+    output.listen(result);
+  }, [result, abortSpeech, announce, output]);
 
   /** After a failure: go back to editing the question (the photo is kept). */
   const edit = useCallback(() => {
@@ -292,9 +321,22 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
     announcement,
     result,
     sendError,
+    answerLang,
+    answerLanguageNotes: result ? answerLanguageNotes(answerLang, result) : [],
     speech: {
       supported: speech.supported,
       error: speech.error,
+    },
+    output: {
+      supported: output.supported,
+      state: output.state,
+      error: output.error,
+      notes: output.notes,
+      pauseUnsupported: output.pauseUnsupported,
+      support: output.support,
+      pause: output.pause,
+      resume: output.resume,
+      stop: output.stopByUser,
     },
     can: {
       capture: canCapture(flow, cameraActive),
@@ -316,5 +358,6 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
     retry,
     edit,
     askAnother,
+    listenToAnswer,
   };
 }

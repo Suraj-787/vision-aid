@@ -17,16 +17,43 @@ Typing is always available as an alternative to speaking.
 > tell whether a banknote is genuine. It does not replace a white cane,
 > guide dog, orientation-and-mobility training, a human guide, or a pharmacist.
 
-## Features (planned)
+## Features
 
 | Feature | What it does | Limits |
 |---|---|---|
 | Scene description | Describes surroundings and objects, answers questions about the photo | Approximate left/right/ahead only when visible; no safety claims |
 | Text and medicine labels | Reads signs, notices, product and medicine labels; extracts medicine names and expiry; may read printed dosage text verbatim | No dose recommendations, prescriptions, suitability advice or interpretation |
-| Indian currency | Identifies ₹10, ₹20, ₹50, ₹100, ₹200, ₹500 notes | Uncertain when evidence is weak; no counterfeit detection |
-| Expiry check | Extracts the expiry date and compares it with today in deterministic code | Never treats a manufacturing date as expiry; ambiguous dates reported as unclear |
+| Indian currency | Reports what a note appears to be (₹10, ₹20, ₹50, ₹100, ₹200, ₹500) with the visible evidence; a value is shown only when the checks pass | Uncertain when evidence is weak; no counterfeit or genuine-note claims; a wrong reading that passes the checks is still possible |
+| Expiry check | The AI reports the printed date text; VisionAid reads it and compares it with today in deterministic code, showing the printed text, the reading and any assumptions | Never treats a manufacturing date as expiry; ambiguous or unreadable dates are `unclear`; says nothing about safety; cannot catch a misread digit |
 
-Languages targeted: English, Hindi, Kannada.
+Every answer also shows what the AI took the question to be and a qualitative
+confidence (low, medium or high: a rough guess, not a guarantee). Wherever
+VisionAid has a deterministic result it states that itself and removes
+conflicting claims from the AI's wording, listing what it changed. Details,
+rules and limits: `docs/ask-api.md`.
+
+### Languages and reading aloud (Milestone 7)
+
+One selector chooses **English (India), Hindi or Kannada**. It sets the language
+your browser's speech recognition listens for, the language VisionAid asks Gemini
+to answer in (the optional `response_language` request field, same single request),
+and which voice-availability message you see. **Listen to answer** reads the answer
+aloud with your device's own voices, only when you tap it, with Pause/Resume (where
+the device supports it) and Stop speaking.
+
+What to expect, honestly:
+- Hindi and Kannada **recognition and voices depend on your browser, phone and
+  installed voice packs and have not been tested on physical devices yet.** The
+  interface tells you when a voice is missing and never reads Hindi or Kannada with
+  an English voice. Typing always works, and the answer is always shown as text.
+- Gemini may answer in English even when you asked for Hindi or Kannada; VisionAid
+  says so and does not translate. Printed Hindi/Kannada text is meant to be shown
+  in its original script, unchanged; how well Gemini reads real Hindi/Kannada
+  photos is untested.
+- VisionAid's own notices and the expiry/banknote checks are English only, and the
+  interface says so. Dates in Hindi/Kannada digits are reported as unclear.
+- Safety filtering of Hindi/Kannada wording is a basic, unreviewed word list.
+- Sarvam speech-to-text was evaluated and is **not** integrated.
 
 ## Status
 
@@ -37,9 +64,9 @@ Languages targeted: English, Hindi, Kannada.
 | 2 Audio primitives (PCM16) | ✅ | Kept for optional Live Mode / Sarvam reuse |
 | 3 Live token endpoint | ✅ | Kept for optional Live Mode; not used by Tap-to-Ask |
 | 4 Tap-to-Ask interface | ✅ | Capture one photo, speak or type a question |
-| 5 Gemini image understanding | ✅ built, awaiting review | `POST /api/ask` -> one Gemini request -> validated answer shown as text |
-| 6 Accessibility tools | next | Text, expiry, currency, medicine labels |
-| 7 Multilingual | | en / hi / kn evaluation, optional Sarvam |
+| 5 Gemini image understanding | ✅ | `POST /api/ask` -> one Gemini request -> validated answer shown as text |
+| 6 Structured processing and deterministic tools | ✅ built, awaiting review | Intent, confidence, expiry check, banknote gating, safety guards |
+| 7 Voice interaction and languages | ✅ built, awaiting review | Listen/Pause/Stop, en / hi / kn selector, `response_language`, multilingual print rules; physical-device tests still to do; Sarvam not integrated |
 | 8 Reliability and evaluation | | Quality checks, accuracy, real devices, demo |
 
 Work proceeds one milestone at a time (see `AGENTS.md`, `docs/implementation-roadmap.md`).
@@ -48,11 +75,11 @@ Work proceeds one milestone at a time (see `AGENTS.md`, `docs/implementation-roa
 
 ```
 Phone browser ── camera preview → one still → downscale/JPEG
-              ── question: Web Speech API (or optional Sarvam) or typed text
-              ── POST /api/ask {image, question, lang}
+              ── question: Web Speech API or typed text (language: en-IN / hi-IN / kn-IN)
+              ── POST /api/ask {image, question, local_date, response_language}
 Next.js server ── validate · rate limit · ONE models.generateContent call (JSON schema)
               ── validate output · deterministic expiry/currency/safety logic
-Phone browser ── answer shown as text in an announced region (spoken answers: planned)
+Phone browser ── answer shown as text in an announced region; read aloud only on Listen (speechSynthesis)
 ```
 
 Details: `docs/architecture.md`.
@@ -61,7 +88,7 @@ Details: `docs/architecture.md`.
 
 - Next.js App Router, TypeScript, React, Tailwind CSS
 - Browser MediaDevices (camera), canvas (capture, downscale, JPEG)
-- Web Speech API (`SpeechRecognition`, `speechSynthesis`); optional Sarvam STT
+- Web Speech API (`SpeechRecognition`, `speechSynthesis`); Sarvam STT not used
 - `@google/genai` (server only) with a Gemini Flash-family model
 
 ## Getting started
@@ -102,8 +129,12 @@ All are server-only; see `.env.example`. Never use `NEXT_PUBLIC_*` for keys.
   question go to Google's Gemini API through VisionAid's server (one request per
   question; Google handles them under its own terms and may retain them). Browser speech recognition may process your audio through
   an external browser/provider service (on-device recognition is not available
-  on mobile); typing is always available instead. Sarvam STT is optional for
-  Milestone 7 and not integrated.
+  on mobile); typing is always available instead. Sarvam STT was evaluated in
+  Milestone 7 and is not integrated. Reading an answer aloud happens only when you
+  tap Listen, using your device's voices; some voices are online services that
+  would receive the answer text (the interface says when a voice may be online).
+  If you choose Hindi or Kannada, that language choice is sent to Gemini with your
+  photo and question. The language choice itself is not stored.
 - VisionAid stores nothing (no database, localStorage, files or cookies); images,
   audio, questions, answers, keys and tokens are never logged.
 - **Free tier:** Google's pricing page says Free-tier content is used to improve

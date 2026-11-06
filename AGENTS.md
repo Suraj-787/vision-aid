@@ -56,7 +56,11 @@ Follow these instructions strictly.
 - Use the model's structured output; validate every response against the schema
   on the server before sending anything to the client (and again in the browser).
   Invalid output becomes a controlled error, never raw model text.
-- Do not blindly trust model confidence; downgrade it when evidence is missing.
+- Confidence is qualitative (low / medium / high), never shown as a number, and
+  never trusted as correctness: a banknote value needs supporting evidence and a
+  non-low confidence, and `low` always carries an explanation of uncertainty.
+- The model reports an `intent` and printed text only; dates are read and
+  compared by code (`src/lib/ask/expiry.ts`), never by the model.
 - Handle HTTP 429 / quota exhaustion gracefully. **No automatic retries of any
   kind** (the SDK's are disabled with `retryOptions.attempts = 1` and the browser
   never repeats a request): the user chooses Try again.

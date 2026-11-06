@@ -54,6 +54,20 @@ request shape is accepted by the real API. Several requests to both
 text-only requests, so these are Google capacity conditions. Availability changes
 from minute to minute and per model; re-check in AI Studio and use Try again.
 
+### Milestone 6 schema verification (2026-11-06, real API)
+The Milestone 6 response schema (nested `currency` and `expiry` objects with
+nullable fields, string enums for `intent` and `confidence`, all fields required,
+`additionalProperties: false`) was accepted by the real API on the first attempt
+with `GEMINI_MODEL=gemini-3.5-flash-lite`. Five synthetic label images (a label with
+MFG and EXP, a past best-before, a manufacturing-date-only label, a medicine
+label asked a dosing question, and a drawn banknote mock-up) were sent in six
+calls: five returned valid structured replies and one hit an intermittent 503
+(Google overload) and succeeded on retry. Every reply was consistent with the
+printed text. These are
+a handful of staged examples, **not** an accuracy measurement. Larger or more
+complex schemas can be rejected by constrained decoding (HTTP 400); this one was
+not.
+
 ### Structured output facts (docs checked 2026-11-04)
 - JSON Schema subset: nullable fields use `{"type": ["string", "null"]}`; `required`
   and `additionalProperties` are supported. `minLength`/`maxLength` are **not**
@@ -123,7 +137,14 @@ Your AI Studio dashboard for project **AutoToon**, Free Tier, 28-day view:
 These were observations at the time, not guarantees; "Unlimited" RPM/RPD does
 not mean unlimited usage.
 
-## Sarvam (optional STT fallback, Milestone 7)
+## Sarvam (optional STT fallback; evaluated in Milestone 7 — not integrated)
+
+**Decision (2026-11-06):** browser-native recognition and `speechSynthesis` are
+used; Sarvam is *not* integrated and no `SARVAM_API_KEY` is read anywhere. It is
+proposed only as a future option if physical-device tests show browser
+recognition is unusable for Hindi or Kannada on the target phones, and only with
+explicit approval (it would send the user's voice to an additional third-party
+processor). The details below are unverified notes from earlier planning.
 
 Sarvam documents a REST speech-to-text API (Saaras v3/v4 models) supporting
 `en-IN`, `hi-IN` and `kn-IN` among 22+ Indian languages

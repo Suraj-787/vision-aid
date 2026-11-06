@@ -53,19 +53,24 @@ Mobile browser (Next.js App Router, React, Tailwind)
   ├─ Quality checks (brightness, blur) src/lib/image/quality.ts          (exists, advisory; tuned in M8)
   ├─ Speech input                      src/lib/speech/*, useSpeechInput  (exists, Milestone 4)
   │    ├─ Web Speech API        (browser SpeechRecognition; implemented)
-  │    ├─ Sarvam STT            (optional; audio -> our server -> Sarvam; Milestone 7, not built)
+  │    ├─ Sarvam STT            (documented future option; NOT integrated, decided in Milestone 7)
   │    └─ Typed question        (always available)
   ├─ Ask-flow state machine            src/lib/ask/ask-flow.ts (pure), src/hooks/useAsk.ts (exists, M4)
-  ├─ Ask UI                            AskPanel, CapturedImageReview, QuestionInput (exists, M4)
-  ├─ Answer view (text, aria-live)     AnswerView, AskProgress, src/lib/ask/client.ts  (exists, M5)
-  ├─ Spoken answers (speechSynthesis)  not built: deliberately excluded from Milestone 5
+  ├─ Ask UI                            AskPanel, CapturedImageReview, QuestionInput (exists, M4);
+  │                                     LanguageSelector (M7)
+  ├─ Answer view (text, aria-live)     AnswerView, AskProgress, src/lib/ask/client.ts  (exists, M5;
+  │                                     expiry/banknote cards, confidence, adjustments: M6)
+  ├─ Spoken answers (speechSynthesis)  src/lib/speech/{spoken-text,script,voices,plan,player}.ts,
+  │                                     src/hooks/useSpeechOutput.ts, SpeakControls  (exists, Milestone 7)
   └─ Microphone PCM16 test panel       src/hooks/useMicrophone.ts        (exists; Live Mode / Sarvam reuse)
 
 Next.js server
   ├─ POST /api/ask           exists    src/app/api/ask/route.ts           (Milestone 5)
   │    └─ src/lib/server/ask/*: config, validate, prompt, gemini, errors, handler
-  │       (expiry, currency, medicine wording checks: Milestone 6)
-  ├─ POST /api/stt           planned, optional  (Sarvam proxy, Milestone 7)
+  ├─ Deterministic logic (pure, shared) src/lib/ask/{dates,expiry,currency,safety,postprocess,
+  │                                     model-output,ask-result}.ts                (exists, Milestone 6;
+  │                                     safety-indic.ts: Hindi/Kannada guards, Milestone 7)
+  ├─ POST /api/stt           not built (Sarvam proxy: a possible future option, needs approval)
   ├─ POST /api/live-token    exists    (Milestone 3; Live Mode only, not used by Tap-to-Ask;
   │                                     returns 404 and mints nothing unless ENABLE_LIVE_MODE=true)
   └─ Shared server modules (exist): env validation, request guard, rate limiter
@@ -146,9 +151,11 @@ provider (Milestone 7) would add a second implementation of the same shape.
     only on desktop Chrome 139+ / Firefox 160+, not on mobile. The privacy
     notice says this, and typed input is always offered as an alternative.
   - Language support per browser/OS is not guaranteed; Kannada in particular
-    must be tested per device (Milestone 7). Set `lang` explicitly.
+    must be tested per device (Milestone 7: the interface does not claim support,
+    it tells the user to type if nothing is recognised). `lang` is set explicitly
+    from the language selector.
   - The browser manages the microphone for Web Speech; our PCM16 pipeline is not used.
-- **Sarvam STT (optional fallback, Milestone 7 — not integrated now).** Server-side only: the
+- **Sarvam STT (optional fallback — evaluated in Milestone 7, deliberately not integrated; see "Sarvam decision").** Server-side only: the
   browser records a short clip, `POST /api/stt` forwards it with
   `SARVAM_API_KEY` to Sarvam's REST speech-to-text (Saaras models; `en-IN`,
   `hi-IN`, `kn-IN` documented). The Milestone 2 microphone capture (16 kHz mono
@@ -159,20 +166,73 @@ provider (Milestone 7) would add a second implementation of the same shape.
   works, and the only option when no speech provider works. The question text
   is editable before sending.
 
-## Spoken output (planned; not part of Milestone 5)
+## Spoken output and languages (Milestone 7, implemented)
 
-_Deliberately excluded from Milestone 5: answers are shown as text and announced to screen readers only. The design below is retained for when it is scheduled._
+**Speaking the answer.** `window.speechSynthesis` / `SpeechSynthesisUtterance`,
+started only when the user taps **Listen to answer**. Nothing is ever spoken
+automatically.
 
-- `window.speechSynthesis` with a voice matching the answer language when one
-  exists (`getVoices()` varies by device; Hindi/Kannada voices may be missing).
-- If no suitable voice exists, show the text and say so; never speak in a wrong
-  voice silently. A server TTS provider is out of scope unless approved after
-  Milestone 7 evaluation.
-- A visible, keyboard-reachable **Stop speaking** control; starting a new
-  question cancels current speech.
-- Screen-reader users: the answer is also placed in an `aria-live` region; offer
-  a setting to rely on the screen reader instead of app speech to avoid two
-  voices talking at once (evaluated in Milestone 8).
+| Piece | File | Responsibility |
+|---|---|---|
+| What is said | `lib/speech/spoken-text.ts` | Built from the *validated* result only: the answer, what is unclear, and (if the answer did not already say it) the expiry explanation or banknote statement. Never intent names, confidence, notices, "changes made", details, printed text or UI wording |
+| Language of each part | `lib/speech/script.ts` | Per sentence, by script: Latin → en-IN, Devanagari → hi-IN, Kannada → kn-IN, so a mixed reply is read with matching voices |
+| Voice choice | `lib/speech/voices.ts`, `plan.ts` | Exact language+region voice, else another region of the *same* language (the user is told), else **none**: that part is skipped and the user is told. **Never a voice for a different language** |
+| Playback | `lib/speech/player.ts` | One playback at a time; a generation counter makes events from a stopped playback harmless (engines report their own `cancel()` as an error); `stop()` clears the whole queue; pause is verified (a device that ignores `pause()` is detected after 250 ms and reported); text is chunked to ≤ 200 characters because some engines stop long utterances |
+| Errors | `lib/speech/speech-output-errors.ts` | Maps `SpeechSynthesisErrorEvent` codes: `canceled`/`interrupted` are silent; `not-allowed`, `audio-busy`/`audio-hardware`, everything else → plain messages with a recovery step |
+| Hook | `hooks/useSpeechOutput.ts` | Owns the player and the installed-voice list (`voiceschanged`), stops speech when the page is hidden or left and on unmount |
+| Controls | `components/SpeakControls.tsx` | Listen / Pause / Resume and Stop speaking. The first button keeps its place in the DOM as its label changes, so focus is not lost; state is also written as text |
+
+Lifecycle rules (all in `useAsk`): speech stops on Cancel/Done, Retake, Ask another
+question, a new request, hidden page, `pagehide` and unmount; starting the
+microphone stops speech first, and speaking stops recognition first, so the
+microphone never hears the answer; a second tap while speaking does nothing; the
+answer text is always shown. Screen-reader announcements for speech are short
+status messages ("Paused.", "Stopped reading.") and never repeat the answer; the
+live region is cleared before playback so a repeated message is announced again.
+
+**Languages.** `en-IN`, `hi-IN`, `kn-IN` (`lib/speech/types.ts`). One selector
+(`components/LanguageSelector.tsx`, not remembered: nothing is stored) sets (1) the
+`lang` of speech recognition, (2) `response_language` sent with the question
+(`docs/ask-api.md`), (3) which voice availability message is shown. Reading a
+reply picks voices from the reply's own script, not from the selector, so an
+English reply to a Hindi request is read with an English voice and the interface
+says the reply was not in Hindi (`lib/speech/answer-language.ts`). VisionAid's own
+checks and notices remain English only, and the interface says so.
+
+**Not done in Milestone 7 (by design).** No server TTS or paid speech service; no
+Sarvam integration (see below); no translation of VisionAid's own safety
+statements; no Indic date parsing; the language is not persisted between visits.
+
+### Browser support (MDN browser-compat-data, fetched 2026-11-06)
+
+| API | Support shown by MDN | What it does *not* tell us |
+|---|---|---|
+| `speechSynthesis` (speak, cancel, pause, resume, `getVoices`, `SpeechSynthesisVoice`) | Chrome 33+, Edge 14+, Firefox 49+, Firefox Android 62+, Safari 7+, Samsung Internet 3.0+ (`voiceschanged` event: Safari 16+) | Which **languages and voices** exist. Hindi and Kannada voices depend on the operating system and installed voice packs, and are often missing. MDN has no entry for some mobile browsers; no claim is made for them |
+| `SpeechRecognition` | Chrome (`SpeechRecognition` unprefixed from 139, `webkit` prefix before), Safari 14.1+ (`webkit` prefix), Firefox 160+; **not** Firefox Android | Which **languages** are recognised, and whether it works on a given phone. `processLocally` (on-device) exists only in desktop Chrome 139+ / Firefox 160+, so on phones recognition is expected to use a server |
+
+Known quirks the code defends against (from MDN notes and common engine
+behaviour; **each must still be checked on real devices**): `getVoices()` is often
+empty until `voiceschanged` fires; `cancel()` raises `canceled`/`interrupted` errors
+on the utterance that was playing; some engines stop long utterances (hence
+chunking); `pause()` does not work on every device; Android may report voice
+languages as `hi_IN` or `hin-IND-...` (normalised); a voice may be online
+(`localService === false`) in which case the text it reads leaves the device (the
+user is told); autoplay policies can block speech not started from a tap
+(`not-allowed`; VisionAid only speaks from a tap). iOS Safari and Android Chrome
+limits on Hindi/Kannada recognition and voices are **unverified** here and are
+listed as manual device tests.
+
+### Sarvam decision (Milestone 7)
+
+Browser-native speech was evaluated first and is kept as the only implementation:
+it needs no new vendor, key, server route or privacy change, and typed input is
+always available. Sarvam speech-to-text is **not integrated, no `SARVAM_API_KEY`
+was added and no `/api/stt` route exists**. It remains a documented future option
+(see `docs/model-and-quota-notes.md`) to be proposed *only if* physical-device
+tests show that browser recognition is unusable for Hindi or Kannada on target
+phones. Integrating it would add a third-party processor receiving the user's
+voice, so it needs explicit approval, verified API/pricing/retention details and a
+privacy-notice change first.
 
 ## Server: `POST /api/ask` (Milestone 5, implemented)
 
@@ -237,69 +297,100 @@ deterministic post-checks on the answer text are Milestone 6.
 
 ## Structured response
 
-Implemented in Milestone 5 (`src/lib/ask/ask-result.ts`, shared by server and
-browser, so the same validation runs on the model's JSON and again on the
-server's reply):
+Two shapes, both validated strictly, in `src/lib/ask/`:
+
+**1. What the model returns** (`model-output.ts`, requested through the Gemini
+response schema in `prompt.ts`). Every field is required; ones that do not apply
+are `null`:
 
 ```ts
-interface AskResult {
-  answer: string;                       // clear, concise answer (required, non-empty, ≤ 2000 chars)
-  details: string | null;               // additional visual details
-  uncertainty: string | null;           // what is unclear, blurry or hidden
-  printed_text: string | null;          // legible text read from the photo
-  printed_instructions: string | null;  // visible printed instructions, copied as written
+interface ModelOutput {
+  intent: "scene_description" | "text_reading" | "medicine_label" |
+          "currency_identification" | "expiry_date" | "general_question" | "unknown";
+  answer: string;
+  details: string | null;
+  uncertainty: string | null;
+  confidence: "low" | "medium" | "high";      // qualitative, not a probability
+  printed_text: string | null;                // copied as printed, [unreadable] for gaps
+  printed_instructions: string | null;        // printed instructions, copied as written
+  currency: { denomination: number | null; currency: string | null; evidence: string | null };
+  expiry: {
+    expiry_date: string | null;               // printed text next to EXP / best before / use by
+    expiry_kind: "expiry" | "best_before" | "use_by" | "unclear" | null;
+    manufacturing_date: string | null;        // printed text next to MFG / MFD / packed
+    date_text: string | null;                 // every date seen, including unlabelled ones
+  };
 }
 ```
 
-All five fields are required in the Gemini response schema; the optional ones
-are nullable (`type: ["string", "null"]`, the documented form). The success reply
-is this object itself; failures are `{ "error": { "code", "message", "retryable" } }`.
+The model reports printed text, never interpreted dates, and is told not to
+calculate. Intent and confidence are string enums in the schema; the nullable
+fields use `type: ["string","null"]` (the documented form); `maxLength` is not
+used because the API ignores it. A reply with a missing field, wrong type, an
+intent/confidence/kind outside its list, or an over-long string is rejected as a
+whole; unknown fields are dropped.
 
-The richer schema proposed earlier (`intent`, `confidence`, `needs_retake`,
-`date_candidates`, `currency`, …) is **not** implemented yet. Milestone 6 adds
-only the task-specific blocks it needs (expiry date candidates, currency) and the
-deterministic logic that consumes them. Model confidence is not used for
-anything in Milestone 5.
+**2. What `/api/ask` returns and the browser displays** (`ask-result.ts`,
+validated again in the browser): the model's `intent`, `answer`, `details`,
+`uncertainty`, `confidence`, `printed_text`, `printed_instructions`, plus the
+app's own `currency_check`, `expiry_check`, `notices` and `adjustments`. The five
+Milestone 5 fields keep their names and meaning, so the change is additive.
+Failures are `{ "error": { "code", "message", "retryable" } }`.
+
+Full field descriptions: `docs/ask-api.md`.
 
 ## Deterministic application logic
 
-Kept out of the LLM, implemented as pure, unit-tested TypeScript:
+Kept out of the LLM, implemented as pure, unit-tested TypeScript in
+`src/lib/ask/` (no browser or server APIs, so they run under `npm test`).
+`postprocess.ts` runs them in this order on the validated model output:
 
-- **Response validation** — parse JSON, validate against the schema, coerce
-  nothing silently; on failure return a generic "could not understand the image,
-  please retake" result (no automatic re-ask).
-- **Confidence** — the model's `confidence` is never trusted on its own. The
-  server downgrades it when evidence is missing (e.g. `currency` with no
-  `visible_cues`, an expiry with no `raw_text`), and low confidence changes the
-  wording ("It might be…, I may be mistaken").
-- **Expiry dates** (Milestone 6):
-  - Only `expiry`, `use_by` and `best_before` candidates are compared.
-    `manufacturing` / `packed_on` are never treated as expiry, even if they are
-    the only date; the answer then says no expiry date was found.
-  - Validate ranges (month 1–12, real calendar day, plausible year window).
-  - Month-only dates (e.g. `EXP 08/2027`) are treated as the **end of that
-    month**, and the answer states this assumption.
-  - Indian packaging uses day-first order. Numeric dates where day/month order
-    is genuinely ambiguous, two-digit years that could be read two ways, and
-    multiple conflicting expiry candidates produce `expiry_status: "unclear"`
-    with the raw text read aloud, not a guess.
-  - Compare against the device's local date; result `expired` / `expires_soon`
-    (threshold configurable, e.g. 30 days) / `not_expired` / `unclear` / `not_found`.
-  - Never say a product is safe to eat or use; report the date only.
-- **Currency** — accept only ₹10, ₹20, ₹50, ₹100, ₹200, ₹500; anything else is
-  `null`. Never claim authenticity; always say counterfeit detection is not
-  possible. Multiple notes or partial notes → ask for one note at a time.
-- **Task-specific safety rules** — keyword and intent checks on the question and
-  answer (e.g. crossing / stairs / "is it safe", dosage / "how many tablets",
-  "can I take", "is it OK for") that replace or append the standard safety
-  message even if the model complied.
-- **Medicine wording** — `printed_instructions` is spoken only with a "the label
-  says" frame and a pharmacist/doctor reminder; answers containing advice-style
-  wording (recommend, you should take, safe for you, suitable) are replaced with
-  the standard medical-limits message plus any verbatim label text.
+- **Response validation** (`model-output.ts`, `ask-result.ts`) — described above.
+  Failures become a generic "unusable answer, try again" error; raw model text is
+  never shown.
+- **Expiry dates** (`dates.ts`, `expiry.ts`) — the model supplies printed text;
+  the code decides what it means and compares it with today as plain
+  year/month/day integers (no `Date` comparisons, so no time-zone off-by-one).
+  Result: `expired` / `not_expired` / `unclear` with the original text, the
+  reading, the comparison date and its source, and any assumptions.
+  - Only expiry, best-before and use-by dates are compared. A manufacturing or
+    packing date is never an expiry date (MFG-only, an MFG label on the expiry
+    text, the same text for both, and an expiry before the manufacturing date all
+    give `unclear`).
+  - Supported: day-first numeric, ISO and month-name dates, and month/year. A
+    month/year date is valid through the **last day of the month**, stated on
+    screen. Two-digit years are read as 20YY, stated on screen.
+  - Ambiguous day/month order is read both ways: if both agree the result stands
+    with the ambiguity stated; if they disagree it is `unclear`.
+  - Never invented: missing years, impossible dates, relative lifetimes, run-
+    together digits, years outside 2000–2099 and unknown words are `unclear`.
+  - "Today" is the user's device date (sent as `local_date`, accepted only within
+    ±2 days of the server's UTC date), otherwise the server's UTC date.
+  - The printed day itself is still valid. The app never says a product is safe
+    to eat or use.
+- **Currency** (`currency.ts`) — only ₹10, ₹20, ₹50, ₹100, ₹200 and ₹500. A value
+  is shown only when it is a supported note, the currency is rupee, evidence was
+  given, confidence is not low, and the answer text does not contradict it;
+  otherwise the result is `uncertain` with no value. Wording is "looks like" /
+  "may be". It never says a note is genuine or counterfeit.
+- **Safety guards** (`safety.ts`) — sentence-level removal, from the model's own
+  prose only (`answer`, `details`, `uncertainty`), of claims that a place is safe
+  or clear, medical advice or dosing, a note being genuine or fake, and a product
+  being safe to use; plus expiry and banknote verdicts that conflict with the
+  deterministic results. Removals are listed in `adjustments` and replaced by
+  fixed wording. `printed_text` and `printed_instructions` are never altered.
+- **Confidence** — shown as a word with a caveat, never a number. `low` always
+  carries an explanation of uncertainty and withholds a banknote value. It is not
+  used as a measure of correctness.
 - **Duplicate-submission prevention** — the Ask button is locked while a request
-  is in flight; a client request id lets the server reject an immediate duplicate.
+  is in flight; the server allows one request per client at a time.
 - **Input quality** — the client checks above; the server re-checks size/type.
+
+What these cannot do: they cannot see the photo, so they cannot verify that the
+printed text or banknote was read correctly. They stop unsupported or forbidden
+claims from being shown as confirmed; they do not make a reading correct. The
+sentence guards are pattern matching and can miss unusual phrasings or remove a
+harmless sentence.
 
 ## Errors, quota and retries
 

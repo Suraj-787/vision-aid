@@ -5,6 +5,7 @@ import {
   MAX_REQUEST_BODY_BYTES,
   type AskServerErrorCode,
 } from "@/lib/ask/ask-api";
+import { isSupportedLang, type SupportedLang } from "@/lib/speech/types";
 
 /**
  * Request validation for POST /api/ask. Pure (no secrets, no network) so it is
@@ -17,6 +18,18 @@ export interface ValidAskRequest {
   /** Trimmed, non-empty, within the length limit. */
   question: string;
   imageBytes: number;
+  /**
+   * The user's local calendar date (YYYY-MM-DD) as reported by their device, or
+   * null. Only its format is checked here; whether it is a real, plausible date is
+   * decided by resolveToday, which ignores bad values.
+   */
+  localDate: string | null;
+  /**
+   * The language the user wants the answer written in (an allow-listed code), or
+   * null when the client did not say (older clients): the model then follows the
+   * language of the question.
+   */
+  responseLanguage: SupportedLang | null;
 }
 
 export type ValidationResult =
@@ -75,9 +88,25 @@ export function validateAskRequest(rawBody: string): ValidationResult {
     return { ok: false, code: "INVALID_REQUEST" };
   }
   const record = body as Record<string, unknown>;
-  // Strict: callers cannot pass anything (model, config, ...) other than these two fields.
-  if (Object.keys(record).some((key) => key !== "image" && key !== "question")) {
+  // Strict: callers cannot pass anything (model, config, ...) other than these fields.
+  if (Object.keys(record).some((key) => key !== "image" && key !== "question" && key !== "local_date" && key !== "response_language")) {
     return { ok: false, code: "INVALID_REQUEST" };
+  }
+
+  // ---- optional device date
+  let localDate: string | null = null;
+  if (record.local_date !== undefined && record.local_date !== null) {
+    if (typeof record.local_date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(record.local_date)) {
+      return { ok: false, code: "INVALID_REQUEST" };
+    }
+    localDate = record.local_date;
+  }
+
+  // ---- optional answer language (exact allow-list; anything else is rejected, never passed on)
+  let responseLanguage: SupportedLang | null = null;
+  if (record.response_language !== undefined && record.response_language !== null) {
+    if (!isSupportedLang(record.response_language)) return { ok: false, code: "INVALID_REQUEST" };
+    responseLanguage = record.response_language;
   }
 
   // ---- question
@@ -121,7 +150,7 @@ export function validateAskRequest(rawBody: string): ValidationResult {
   const jpeg = checkJpeg(bytes);
   if (!jpeg.ok) return { ok: false, code: jpeg.code };
 
-  return { ok: true, value: { imageBase64: base64, question, imageBytes: bytes.length } };
+  return { ok: true, value: { imageBase64: base64, question, imageBytes: bytes.length, localDate, responseLanguage } };
 }
 
 type JpegCheck = { ok: true; width: number; height: number } | { ok: false; code: AskServerErrorCode };
