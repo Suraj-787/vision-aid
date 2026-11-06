@@ -1,64 +1,377 @@
 @import "tailwindcss";
 
+/*
+ * VisionAid design system: "Calm Clarity".
+ * Deep teal for trust and action, warm amber used sparingly for attention, generous
+ * whitespace, one rounded-corner scale, and type chosen for legibility. Every
+ * foreground/background pair below was checked against WCAG 2.2 AA (see
+ * docs/design-system.md). Light and dark follow the system setting.
+ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #111827;
-  --muted: #4b5563;
-  --surface: #f3f4f6;
-  --border: #9ca3af;
-  --accent: #1d4ed8;
-  --accent-foreground: #ffffff;
-  --warning-bg: #fffbeb;
-  --warning-border: #b45309;
-  --warning-foreground: #451a03;
+  /* surfaces */
+  --background: #f7faf9;
+  --surface: #ffffff;
+  --surface-2: #eaf3f1;
+  /* text */
+  --foreground: #142b2a;
+  --muted: #526a67;
+  /* brand */
+  --primary: #0f766e;
+  --primary-hover: #115e59;
+  --primary-foreground: #ffffff;
+  --accent: #f4b860;
+  --accent-foreground: #142b2a;
+  /* lines: --border is decorative; --border-strong is for form controls (3:1 non-text contrast) */
+  --border: #d5e2de;
+  --border-strong: #6b8782;
+  --focus: #0f766e;
+  /* semantic (each has a surface, a border/icon colour and a text colour) */
+  --success-bg: #e4f4ea;
+  --success-border: #2f855a;
+  --success-fg: #0f4d2b;
+  --warning-bg: #fff3dc;
+  --warning-border: #b7791f;
+  --warning-fg: #3a2a05;
+  --danger-bg: #fdecea;
+  --danger-border: #b42318;
+  --danger-fg: #5a1410;
+  /* depth */
+  --shadow-sm: 0 1px 2px rgb(20 43 42 / 0.06);
+  --shadow-md: 0 1px 2px rgb(20 43 42 / 0.06), 0 10px 28px -14px rgb(20 43 42 / 0.2);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0b0f19;
-    --foreground: #f3f4f6;
-    --muted: #b6bdc9;
-    --surface: #161c2b;
-    --border: #6b7280;
-    --accent: #93c5fd;
-    --accent-foreground: #0b0f19;
-    --warning-bg: #2a1d05;
-    --warning-border: #f59e0b;
-    --warning-foreground: #fef3c7;
+    --background: #0c1716;
+    --surface: #122321;
+    --surface-2: #1a302d;
+    --foreground: #f2f7f5;
+    --muted: #b5c8c2;
+    --primary: #5eead4;
+    --primary-hover: #99f6e4;
+    --primary-foreground: #0c1716;
+    --accent: #f4b860;
+    --accent-foreground: #142b2a;
+    --border: #2b4540;
+    --border-strong: #6b8f88;
+    --focus: #5eead4;
+    --success-bg: #12301f;
+    --success-border: #5bbf8a;
+    --success-fg: #c4f1d5;
+    --warning-bg: #2e2308;
+    --warning-border: #d9a441;
+    --warning-fg: #fbe3b3;
+    --danger-bg: #331513;
+    --danger-border: #e0705f;
+    --danger-fg: #ffd3ce;
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-md: 0 1px 2px rgb(0 0 0 / 0.4), 0 12px 30px -14px rgb(0 0 0 / 0.6);
   }
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
-  --color-surface: var(--surface);
-  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-success-bg: var(--success-bg);
+  --color-success-border: var(--success-border);
+  --color-success-fg: var(--success-fg);
   --color-warning-bg: var(--warning-bg);
   --color-warning-border: var(--warning-border);
-  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-fg: var(--warning-fg);
+  --color-danger-bg: var(--danger-bg);
+  --color-danger-border: var(--danger-border);
+  --color-danger-fg: var(--danger-fg);
+  --font-sans: var(--font-atkinson), system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Noto Sans Devanagari", "Noto Sans Kannada", "Kohinoor Devanagari", "Kannada Sangam MN", "Nirmala UI", sans-serif;
+  --font-display: var(--font-manrope), var(--font-atkinson), system-ui, "Noto Sans Devanagari", "Noto Sans Kannada", sans-serif;
+  --shadow-card: var(--shadow-md);
+  --radius-control: 0.75rem;
+  --radius-card: 1.25rem;
 }
 
 html {
   -webkit-text-size-adjust: 100%;
+  /* 18 px body text; everything is in rem so browser text enlargement scales the whole interface */
+  font-size: 112.5%;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family:
-    system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Noto Sans Devanagari",
-    "Noto Sans Kannada", sans-serif;
+  font-family: var(--font-atkinson), system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Noto Sans Devanagari", "Noto Sans Kannada", "Kohinoor Devanagari", "Kannada Sangam MN", "Nirmala UI", sans-serif;
   line-height: 1.6;
+  text-rendering: optimizeLegibility;
+  /* With very large text, a word that cannot fit may break rather than push the page sideways. */
+  overflow-wrap: anywhere;
 }
 
-/* Visible keyboard focus on every interactive element. */
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-manrope), var(--font-atkinson), system-ui, "Noto Sans Devanagari", "Noto Sans Kannada", sans-serif;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+/* Visible keyboard focus everywhere: a 3 px ring with a gap so it reads on any surface. */
 :focus-visible {
-  outline: 3px solid var(--accent);
+  outline: 3px solid var(--focus);
   outline-offset: 3px;
-  border-radius: 2px;
+  border-radius: 6px;
+}
+
+/* Headings and <main> that receive focus from code (after a capture or an answer) are not
+   tab stops, so they get no ring: a ring around a heading reads as a broken control. Every
+   control a person can tab to keeps the ring above. */
+[tabindex="-1"]:focus-visible {
+  outline: none;
+}
+
+/* ---------- components ---------- */
+@layer components {
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .card-raised {
+    box-shadow: var(--shadow-md);
+  }
+
+  /* Buttons: one height (48 px+), one radius, three weights of emphasis. */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    min-height: 3rem;
+    min-width: 3rem;
+    padding: 0.7rem min(1.25rem, 4vw);
+    border: 2px solid transparent;
+    border-radius: var(--radius-control);
+    font-weight: 700;
+    line-height: 1.2;
+    text-align: center;
+    cursor: pointer;
+    transition:
+      background-color 150ms ease,
+      border-color 150ms ease,
+      transform 100ms ease,
+      box-shadow 150ms ease;
+  }
+  /* Long labels wrap instead of pushing the page sideways when text is enlarged. */
+  .btn {
+    max-width: 100%;
+  }
+  .btn > span {
+    min-width: 0;
+  }
+  .btn:active:not([aria-disabled="true"]) {
+    transform: translateY(1px) scale(0.99);
+  }
+  .btn[aria-disabled="true"] {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+  .btn-primary {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    box-shadow: var(--shadow-sm);
+  }
+  .btn-primary:hover:not([aria-disabled="true"]) {
+    background: var(--primary-hover);
+  }
+  .btn-secondary {
+    background: var(--surface);
+    color: var(--foreground);
+    border-color: var(--border-strong);
+  }
+  .btn-secondary:hover:not([aria-disabled="true"]) {
+    background: var(--surface-2);
+  }
+  .btn-quiet {
+    padding-inline: 0.75rem;
+    background: transparent;
+    color: var(--foreground);
+    border-color: transparent;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    text-decoration-thickness: 1px;
+  }
+  .btn-quiet:hover:not([aria-disabled="true"]) {
+    background: var(--surface-2);
+  }
+  .btn-large {
+    width: 100%;
+    min-height: 3.75rem;
+    font-size: 1.2rem;
+    padding: 0.9rem 1.5rem;
+  }
+
+  /* Form controls */
+  .field {
+    width: 100%;
+    min-height: 3rem;
+    background: var(--surface);
+    color: var(--foreground);
+    border: 2px solid var(--border-strong);
+    border-radius: var(--radius-control);
+    padding: 0.7rem 0.9rem;
+    transition: border-color 150ms ease;
+  }
+  .field:hover {
+    border-color: var(--foreground);
+  }
+  .field::placeholder {
+    color: var(--muted);
+    opacity: 1;
+  }
+  .field[readonly] {
+    background: var(--surface-2);
+  }
+
+  /* Status chips: always icon + words, never colour alone. */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.3rem 0.8rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--foreground);
+    font-size: 0.9375rem;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  /* Callouts: tinted surface, strong edge, icon, text. */
+  .callout {
+    display: flex;
+    gap: 0.75rem;
+    /* Padding is capped by the viewport so enlarged text keeps its room (no change at normal size). */
+    padding: 0.9rem min(1rem, 4vw);
+    gap: min(0.75rem, 3vw);
+    border-radius: var(--radius-control);
+    border: 1px solid;
+    border-left-width: 5px;
+  }
+  .callout-warning {
+    background: var(--warning-bg);
+    border-color: var(--warning-border);
+    color: var(--warning-fg);
+  }
+  .callout-danger {
+    background: var(--danger-bg);
+    border-color: var(--danger-border);
+    color: var(--danger-fg);
+  }
+  .callout-success {
+    background: var(--success-bg);
+    border-color: var(--success-border);
+    color: var(--success-fg);
+  }
+  .callout-info {
+    background: var(--surface-2);
+    border-color: var(--primary);
+    color: var(--foreground);
+  }
+
+  /* Viewfinder: corner marks drawn in the frame's padding, never over the picture. */
+  .viewfinder {
+    position: relative;
+    padding: min(0.9rem, 3vw);
+    border-radius: var(--radius-card);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+  }
+  .viewfinder::before,
+  .viewfinder::after,
+  .viewfinder > .vf-corner-bl,
+  .viewfinder > .vf-corner-br {
+    content: "";
+    position: absolute;
+    width: 1.25rem;
+    height: 1.25rem;
+    border: 3px solid var(--primary);
+    pointer-events: none;
+  }
+  .viewfinder::before {
+    top: 0.4rem;
+    left: 0.4rem;
+    border-right: 0;
+    border-bottom: 0;
+    border-top-left-radius: 0.5rem;
+  }
+  .viewfinder::after {
+    top: 0.4rem;
+    right: 0.4rem;
+    border-left: 0;
+    border-bottom: 0;
+    border-top-right-radius: 0.5rem;
+  }
+  .viewfinder > .vf-corner-bl {
+    bottom: 0.4rem;
+    left: 0.4rem;
+    border-right: 0;
+    border-top: 0;
+    border-bottom-left-radius: 0.5rem;
+  }
+  .viewfinder > .vf-corner-br {
+    bottom: 0.4rem;
+    right: 0.4rem;
+    border-left: 0;
+    border-top: 0;
+    border-bottom-right-radius: 0.5rem;
+  }
+
+  /* One restrained entrance, used when a new step appears (not on every element). */
+  .rise {
+    animation: rise 260ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@utility text-caption {
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+/* <details> summaries: bigger target, no default marker, chevron rotates. */
+summary {
+  list-style: none;
+}
+summary::-webkit-details-marker {
+  display: none;
+}
+details[open] > summary .chevron {
+  transform: rotate(180deg);
+}
+.chevron {
+  transition: transform 150ms ease;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -66,6 +379,7 @@ body {
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }

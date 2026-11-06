@@ -2,30 +2,28 @@
 
 import { useEffect, useRef } from "react";
 import { ActionButton } from "@/components/ActionButton";
+import { Icon } from "@/components/Icon";
 import type { AskFailure } from "@/lib/ask/client";
 
-/** Shown while the single request to /api/ask is in flight. */
+/** Shown while the single request to /api/ask is in flight. No fake progress: just what is happening. */
 export function SendingView({ question }: { question: string }) {
   return (
     <section
       aria-labelledby="sending-heading"
       aria-busy="true"
-      className="space-y-3 rounded-lg border-2 border-accent bg-surface p-4"
+      className="card card-raised rise space-y-3 p-[min(1.25rem,4.5vw)]"
     >
-      <h3 id="sending-heading" className="flex items-center gap-3 text-lg font-bold">
+      <h3 id="sending-heading" className="flex items-center gap-3 text-xl font-bold">
         <span
           aria-hidden="true"
-          className="inline-block h-5 w-5 animate-spin rounded-full border-4 border-border border-t-accent"
+          className="inline-block h-6 w-6 animate-spin rounded-full border-4 border-border border-t-primary"
         />
         Asking Gemini…
       </h3>
-      <p>Your question:</p>
-      <blockquote className="whitespace-pre-wrap rounded-lg border border-border bg-background p-3 text-lg">
+      <blockquote className="whitespace-pre-wrap rounded-xl bg-surface-2 p-3 text-lg">
         {question}
       </blockquote>
-      <p className="text-sm text-muted">
-        This usually takes a few seconds. You can cancel at any time.
-      </p>
+      <p className="text-caption text-muted">This usually takes a few seconds. You can cancel at any time.</p>
     </section>
   );
 }
@@ -43,26 +41,31 @@ export function SendFailure({ error, canRetry, onRetry, onEdit }: SendFailurePro
   useEffect(() => headingRef.current?.focus(), []);
 
   return (
-    <section
-      aria-labelledby="failure-heading"
-      className="space-y-3 rounded-lg border-2 border-warning-border bg-warning-bg p-4 text-warning-foreground"
-    >
-      <h3 id="failure-heading" ref={headingRef} tabIndex={-1} className="text-lg font-bold">
+    <section aria-labelledby="failure-heading" className="callout callout-danger rise !flex-col !gap-3">
+      <h3
+        id="failure-heading"
+        ref={headingRef}
+        tabIndex={-1}
+        className="flex items-center gap-2 text-xl font-bold"
+      >
+        <Icon name="circle-x" />
         Could not get an answer
       </h3>
       <p role="alert">{error.message}</p>
       {error.retryAfterSeconds !== undefined && (
-        <p className="text-sm">
+        <p className="text-caption">
           Please wait about {error.retryAfterSeconds} seconds before trying again.
         </p>
       )}
       <div className="flex flex-wrap gap-3">
         {error.retryable && (
-          <ActionButton variant="primary" onClick={onRetry} disabled={!canRetry}>
+          <ActionButton variant="primary" icon="refresh-cw" onClick={onRetry} disabled={!canRetry}>
             Try again
           </ActionButton>
         )}
-        <ActionButton onClick={onEdit}>Edit question</ActionButton>
+        <ActionButton icon="pencil" onClick={onEdit}>
+          Edit question
+        </ActionButton>
       </div>
     </section>
   );

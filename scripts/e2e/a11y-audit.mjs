@@ -12,10 +12,10 @@ const answer = { intent: "expiry_date", answer: 'The printed expiry date "EXP 08
   expiry_check: { status: "not_expired", kind: "expiry", printed_text: "EXP 08/2027", manufacturing_text: "MFG 02/2026", interpreted_as: "August 2027", checked_on: "2026-11-06", checked_on_source: "device", explanation: "x has not passed yet.", assumptions: ["a"] },
   notices: ["expiry_limits", "currency_limits"], adjustments: ["navigation_claim_removed"] };
 
-async function run(scheme, width) {
+async function run(scheme, width, zoom = false, reduceMotion = false) {
   const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--no-first-run"] });
   const page = await browser.newPage();
-  await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }]);
+  await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: scheme }, { name: "prefers-reduced-motion", value: reduceMotion ? "reduce" : "no-preference" }]);
   await page.setViewport({ width, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   let mode = "ok";
   await page.setRequestInterception(true);
@@ -28,9 +28,10 @@ async function run(scheme, width) {
   });
   await page.goto(URL_, { waitUntil: "networkidle0" });
   await page.evaluate(axeSrc);
-  const out = { scheme, width, states: {} };
+  if (zoom) await page.addStyleTag({ content: "html { font-size: 225% !important; }" }); // 200% text enlargement on top of the 112.5% base
+  const out = { scheme, width, zoom, reduceMotion, states: {} };
   const axe = async (name) => {
-    const r = await page.evaluate(async () => { const r = await axe.run(document, { resultTypes: ["violations", "incomplete"] }); return { v: r.violations.map((x) => ({ id: x.id, impact: x.impact, n: x.nodes.length, sample: x.nodes[0].html.slice(0, 120), msg: x.nodes[0].failureSummary?.split("\n")[1] })), inc: r.incomplete.map((x) => ({ id: x.id, n: x.nodes.length })) }; });
+    const r = await page.evaluate(async () => { const r = await axe.run(document, { resultTypes: ["violations", "incomplete"], runOnly: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"] }); return { v: r.violations.map((x) => ({ id: x.id, impact: x.impact, n: x.nodes.length, sample: x.nodes[0].html.slice(0, 120), msg: x.nodes[0].failureSummary?.split("\n")[1] })), inc: r.incomplete.map((x) => ({ id: x.id, n: x.nodes.length })) }; });
     const targets = await page.evaluate(() => [...document.querySelectorAll("button, a[href], select, textarea, input, summary, [tabindex]:not([tabindex='-1'])")].filter((e) => e.offsetParent !== null && !e.closest(".sr-only") && getComputedStyle(e).position !== "fixed").map((e) => { const r = e.getBoundingClientRect(); return { t: (e.textContent || e.id || e.tagName).trim().slice(0, 30), w: Math.round(r.width), h: Math.round(r.height) }; }).filter((x) => x.w < 44 || x.h < 44));
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
     const focus = await page.evaluate(() => { const a = document.activeElement; return a === document.body ? "BODY (focus lost)" : `${a.tagName.toLowerCase()}#${a.id}:${(a.textContent || "").trim().slice(0, 25)}`; });
@@ -52,13 +53,18 @@ async function run(scheme, width) {
   await page.type("#question-input", "again");
   await click("Ask"); await page.waitForSelector("#failure-heading"); await sleep(300);
   await axe("failure");
+  out.animation = await page.evaluate(() => { const el = document.querySelector(".btn"); return el ? getComputedStyle(el).transitionDuration : ""; });
   await browser.close();
   return out;
 }
 const results = [];
-for (const [scheme, width] of [["light", 390], ["dark", 390], ["light", 320]]) results.push(await run(scheme, width));
+const RUNS = [["light", 320], ["light", 360], ["light", 390], ["dark", 390], ["light", 430], ["light", 768], ["light", 1280], ["dark", 1280]];
+for (const [scheme, width] of RUNS) results.push(await run(scheme, width));
+results.push(await run("light", 390, true)); // 200% text enlargement
+results.push(await run("light", 320, true));
+results.push(await run("light", 390, false, true)); // reduced motion
 for (const r of results) {
-  console.log(`\n=== ${r.scheme} ${r.width}px  captured: ${r.captured}`);
+  console.log(`\n=== ${r.scheme} ${r.width}px${r.zoom ? " TEXT 200%" : ""}${r.reduceMotion ? " REDUCED-MOTION (button transition " + r.animation + ")" : ""}  captured: ${r.captured}`);
   for (const [name, s] of Object.entries(r.states)) {
     console.log(` [${name}] focus=${s.focus} overflow=${s.overflow} smallTargets=${JSON.stringify(s.smallTargets)}`);
     for (const v of s.violations) console.log(`    VIOLATION ${v.id} (${v.impact}) x${v.n}: ${v.msg} | ${v.sample}`);

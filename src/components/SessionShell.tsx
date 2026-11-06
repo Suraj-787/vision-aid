@@ -2,34 +2,11 @@
 
 import { AskPanel } from "@/components/AskPanel";
 import { CameraPreview } from "@/components/CameraPreview";
+import { Icon } from "@/components/Icon";
 import { MicrophonePanel } from "@/components/MicrophonePanel";
 import { useAsk } from "@/hooks/useAsk";
-import { useCamera, type CameraStatus } from "@/hooks/useCamera";
-import { useMicrophone, type MicrophoneStatus } from "@/hooks/useMicrophone";
-import { SESSION_STATE_LABELS } from "@/lib/session-state";
-
-const CAMERA_STATUS_TEXT: Record<CameraStatus, string> = {
-  idle: "Camera is off.",
-  "requesting-permissions":
-    "Requesting camera permission. Please respond to your browser's prompt.",
-  "camera-ready":
-    "Camera preview is on. It is shown on this device only; nothing is recorded or sent.",
-  error: "Camera is off.",
-};
-
-const CAMERA_DEVICE_VALUE: Record<CameraStatus, string> = {
-  idle: "Off",
-  "requesting-permissions": "Waiting for permission",
-  "camera-ready": "On (preview only)",
-  error: "Off (error)",
-};
-
-const MIC_DEVICE_VALUE: Record<MicrophoneStatus, string> = {
-  idle: "Off",
-  "requesting-permissions": "Waiting for permission",
-  listening: "On (test only)",
-  error: "Off (error)",
-};
+import { useCamera } from "@/hooks/useCamera";
+import { useMicrophone } from "@/hooks/useMicrophone";
 
 /**
  * Tap-to-Ask: the camera preview (Milestone 1) feeds one captured still; the
@@ -54,64 +31,34 @@ export function SessionShell() {
     },
   });
 
-  const listening = ask.phase === "listening";
-  const aiValue = ask.phase === "sending" ? "Sending to Gemini…" : "Used only when you tap Ask";
-  const micValue = listening
-    ? "On (listening for your question)"
-    : MIC_DEVICE_VALUE[microphone.status];
-
   return (
-    <section aria-labelledby="session-heading" className="space-y-4">
-      <h2 id="session-heading" className="text-xl font-bold">
+    <section aria-labelledby="session-heading" className="space-y-5">
+      <h2 id="session-heading" className="sr-only">
         Ask about a photo
       </h2>
 
-      <p role="status" className="text-lg font-semibold">
-        Status: {SESSION_STATE_LABELS[camera.status]}. {CAMERA_STATUS_TEXT[camera.status]}
-      </p>
-
       {camera.error && (
-        <p
-          role="alert"
-          className="rounded-lg border-2 border-warning-border bg-warning-bg p-3 text-warning-foreground"
-        >
-          {camera.error.message}
-        </p>
+        <div role="alert" className="callout callout-danger">
+          <Icon name="camera-off" className="mt-0.5" />
+          <p>{camera.error.message}</p>
+        </div>
       )}
-
-      {/* Stays mounted (the camera hook attaches the stream to its <video>); hidden while a photo is shown. */}
-      <div hidden={ask.image !== null}>
-        <CameraPreview videoRef={camera.videoRef} status={camera.status} />
-      </div>
 
       <AskPanel
         ask={ask}
         cameraStatus={camera.status}
         onStartCamera={() => void camera.start()}
         onStopCamera={camera.stop}
+        preview={<CameraPreview videoRef={camera.videoRef} status={camera.status} />}
       />
 
-      <dl className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        {[
-          { name: "Camera", value: CAMERA_DEVICE_VALUE[camera.status] },
-          { name: "Microphone", value: micValue },
-          { name: "AI service", value: aiValue },
-        ].map(({ name, value }) => (
-          <div
-            key={name}
-            className="rounded-lg border border-border bg-surface px-4 py-3"
-          >
-            <dt className="text-sm text-muted">{name}</dt>
-            <dd className="font-semibold">{value}</dd>
-          </div>
-        ))}
-      </dl>
-
-      <details className="rounded-lg border border-border p-3">
-        <summary className="flex min-h-11 cursor-pointer items-center font-semibold">
-          Microphone test (diagnostic, optional)
+      <details className="card">
+        <summary className="flex min-h-12 cursor-pointer items-center gap-3 px-[min(1rem,4vw)] py-2 font-bold">
+          <Icon name="mic" className="text-primary" />
+          <span className="flex-1 font-display text-base">Microphone test (diagnostic, optional)</span>
+          <Icon name="chevron-down" size={0.9} className="chevron" />
         </summary>
-        <div className="mt-3">
+        <div className="border-t border-border p-[min(1rem,4vw)]">
           <MicrophonePanel
             {...microphone}
             start={async () => {

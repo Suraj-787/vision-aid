@@ -200,6 +200,19 @@ a real microphone, real Hindi/Kannada recognition or voices, or real Gemini outp
 - Not checked automatically: contrast of the "Camera on" badge over live video
   (axe cannot evaluate it), real-camera orientation, thermal/battery behaviour.
 
+### UI redesign ("Calm Clarity", 2026-11-06)
+Re-ran everything on the redesigned build: lint, typecheck, 601 unit tests, `ui-m1-m6`
+(85), `ui-m7` (153), `ui-m8` (67), `lifecycle` (10), and `a11y-audit` (11 runs: widths
+320 to 1280, light and dark, 200 % text, reduced motion; 0 violations, 0 overflow, 0
+targets under 44 px). Browser assertions that were changed, and why (nothing was
+weakened): the Camera and Microphone status tiles were removed as duplicates, so
+`ui-m1-m6` scenario 9 now reads the camera status chip and the microphone panel status
+and opens the microphone-test section explicitly; the language control moved into the
+question step (after the photo), so `ui-m7` scenarios 4, 5, 5b, 6, 10 and `ui-m8`
+scenario 8 select the language after capturing instead of before. Details in
+`docs/design-system.md`. Still manual: look and feel on real phones, VoiceOver/TalkBack,
+forced-colors mode.
+
 ### Manual: what YOU still need to run (nothing below has been tested)
 Use staged, non-sensitive items and consenting people. Record device, OS, browser
 version, result and notes for each line. Needs HTTPS for phones (e.g. an ngrok

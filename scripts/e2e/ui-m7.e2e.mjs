@@ -237,9 +237,10 @@ await scenario("3b. pagehide stops speech", {}, () => ok(), async (a) => {
 });
 
 await scenario("4. Browser without speech synthesis: text only, clear message", { synth: false }, () => ok(), async (a) => {
+  await a.setup(); // the language control is part of the question step, after the photo
   const t0 = await a.text();
   must(/Reading aloud in English: Not available: Spoken answers are not available in this browser/.test(t0.replace(/\s+/g, " ")), "language area says reading aloud is unavailable");
-  await a.setup(); await a.askAndWait();
+  await a.askAndWait();
   const t = await a.answerText();
   must(t.includes("I can see a white box on a table."), "the answer is shown as text");
   must(t.includes("Reading aloud is not available in this browser. The answer is shown as text."), "message shown with the answer");
@@ -247,11 +248,11 @@ await scenario("4. Browser without speech synthesis: text only, clear message", 
 });
 
 await scenario("5. Hindi chosen but no Hindi voice: told clearly, never read in the wrong voice", { voices: EN_ONLY, recog: true }, () => ok({ answer: HI, expiry_check: expiry, intent: "expiry_date", notices: ["expiry_limits"] }), async (a) => {
-  await a.pick("hi-IN"); await sleep(100);
+  await a.setup("यह क्या है?"); await a.pick("hi-IN"); await sleep(100);
   let t = (await a.text()).replace(/\s+/g, " ");
   must(/Reading aloud in Hindi: Not available: No Hindi voice is installed on this device/.test(t), "selector says no Hindi voice is installed, in words");
   must(t.includes("Your browser decides whether it understands Hindi"), "selector does not promise Hindi recognition");
-  await a.setup("यह क्या है?"); await a.askAndWait();
+  await a.askAndWait();
   must(a.calls[0].response_language === "hi-IN", "the request carries response_language hi-IN", String(a.calls[0].response_language));
   await a.click("Listen to answer"); await sleep(300);
   const s = await a.tts();
@@ -263,7 +264,7 @@ await scenario("5. Hindi chosen but no Hindi voice: told clearly, never read in 
 });
 
 await scenario("5b. Only Hindi text and no Hindi voice: error with a recovery path, no speech", { voices: EN_ONLY }, () => ok({ answer: HI }), async (a) => {
-  await a.pick("hi-IN"); await a.setup("क्या है?"); await a.askAndWait();
+  await a.setup("क्या है?"); await a.pick("hi-IN"); await a.askAndWait();
   await a.click("Listen to answer"); await sleep(300);
   must((await a.tts()).log.length === 0, "nothing was spoken");
   const alert = await a.page.evaluate(() => document.querySelector('[role="alert"]')?.textContent ?? "");
@@ -274,6 +275,7 @@ await scenario("5b. Only Hindi text and no Hindi voice: error with a recovery pa
 await scenario("6. Language switching: voice per language, request language, honest mismatch notes", {}, ({ body }) =>
   body.response_language === "kn-IN" ? ok({ answer: KN, printed_text: "ಪ್ಯಾರಾಸಿಟಮಾಲ್ 500" })
   : body.response_language === "hi-IN" ? ok({ answer: "I can see a white box." }) : ok(), async (a) => {
+  await a.setup("ಇದು ಏನು?"); // the language control is part of the question step, after the photo
   const labels = await a.page.evaluate(() => [...document.querySelectorAll("#app-language option")].map((o) => `${o.value}|${o.textContent}|${o.lang}`));
   must(labels.join() === "en-IN|English (India)|en,hi-IN|हिन्दी (Hindi)|hi,kn-IN|ಕನ್ನಡ (Kannada)|kn", "selector lists exactly English, Hindi, Kannada with language attributes", labels.join());
   must((await a.page.evaluate(() => document.querySelector('label[for="app-language"]')?.textContent ?? "")).includes("Language"), "selector has a visible label");
@@ -283,7 +285,7 @@ await scenario("6. Language switching: voice per language, request language, hon
     must(t.includes(`Reading aloud in ${name}: Available: A ${name} voice is available (${voice})`), `${name}: voice availability stated in words`);
   }
   // Kannada request -> Kannada answer -> Kannada voice
-  await a.pick("kn-IN"); await a.setup("ಇದು ಏನು?"); await a.askAndWait();
+  await a.pick("kn-IN"); await a.askAndWait();
   must(a.calls[0].response_language === "kn-IN", "Kannada request carries response_language kn-IN");
   must((await a.page.evaluate(() => document.querySelector("#answer-heading").closest("section").querySelector("p").lang)) === "kn", "answer paragraph is marked lang=kn for screen readers");
   const printed = await a.page.evaluate(() => [...document.querySelectorAll("p")].find((p) => p.textContent.includes("ಪ್ಯಾರಾಸಿಟಮಾಲ್"))?.lang);
@@ -372,17 +374,18 @@ await scenario("9. Speech engine failures", { pauseBroken: true }, () => ok(), a
 });
 
 await scenario("10. Accessibility: roles, labels, announcements, focus, tap targets", {}, () => ok({ answer: "I can see a white box." }), async (a) => {
-  await a.setup(); await a.askAndWait();
+  await a.setup();
+  const described = await a.page.evaluate(() => document.querySelector("#app-language").getAttribute("aria-describedby"));
+  await a.askAndWait();
   must((await a.focusText()) === "Answer", "focus moves to the answer heading, not to the read-aloud controls");
   const info = await a.page.evaluate(() => {
     const group = document.querySelector('[role="group"][aria-label="Read the answer aloud"]');
     const buttons = [...(group?.querySelectorAll("button") ?? [])].map((b) => { const r = b.getBoundingClientRect(); return { t: b.textContent.trim(), h: Math.round(r.height), w: Math.round(r.width) }; });
-    const sel = document.querySelector("#app-language");
-    return { group: !!group, buttons, described: sel.getAttribute("aria-describedby"), live: document.querySelectorAll('[role="status"][aria-live="polite"]').length };
+    return { group: !!group, buttons, live: document.querySelectorAll('[role="status"][aria-live="polite"]').length };
   });
   must(info.group, "read-aloud controls are a labelled group");
   must(info.buttons.length === 2 && info.buttons.every((b) => b.h >= 44 && b.w >= 44), "buttons are at least 44x44 px", JSON.stringify(info.buttons));
-  must(/language-help/.test(info.described) && /language-voice/.test(info.described), "language selector is described by its help and voice-availability text");
+  must(/language-help/.test(described) && /language-voice/.test(described), "language selector is described by its help and voice-availability text");
   await a.page.keyboard.press("Tab");
   let reached = false;
   for (let i = 0; i < 12 && !reached; i++) { reached = (await a.focusText()) === "Listen to answer"; if (!reached) await a.page.keyboard.press("Tab"); }

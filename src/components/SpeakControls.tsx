@@ -1,6 +1,7 @@
 "use client";
 
 import { ActionButton } from "@/components/ActionButton";
+import { Icon } from "@/components/Icon";
 import type { useAsk } from "@/hooks/useAsk";
 
 type Output = ReturnType<typeof useAsk>["output"];
@@ -19,7 +20,7 @@ interface SpeakControlsProps {
 export function SpeakControls({ output, onListen }: SpeakControlsProps) {
   if (!output.supported) {
     return (
-      <p className="rounded-lg border border-border p-3 text-sm">
+      <p className="callout callout-info text-caption">
         Reading aloud is not available in this browser. The answer is shown as text.
       </p>
     );
@@ -30,35 +31,40 @@ export function SpeakControls({ output, onListen }: SpeakControlsProps) {
   const paused = output.state === "paused";
 
   const primary = idle
-    ? { label: "Listen to answer", onClick: onListen, disabled: false }
+    ? { label: "Listen to answer", icon: "volume-2" as const, onClick: onListen, disabled: false }
     : paused
-      ? { label: "Resume", onClick: output.resume, disabled: false }
+      ? { label: "Resume", icon: "play" as const, onClick: output.resume, disabled: false }
       : output.pauseUnsupported
-        ? { label: "Pause is not available here", onClick: () => {}, disabled: true }
-        : { label: "Pause", onClick: output.pause, disabled: false };
+        ? { label: "Pause is not available here", icon: "pause" as const, onClick: () => {}, disabled: true }
+        : { label: "Pause", icon: "pause" as const, onClick: output.pause, disabled: false };
 
   return (
-    <div className="space-y-2" role="group" aria-label="Read the answer aloud">
+    <div className="space-y-3" role="group" aria-label="Read the answer aloud">
       <div className="flex flex-wrap items-center gap-3">
-        <ActionButton variant="primary" onClick={primary.onClick} disabled={primary.disabled}>
+        <ActionButton variant="primary" icon={primary.icon} onClick={primary.onClick} disabled={primary.disabled}>
           {primary.label}
         </ActionButton>
-        <ActionButton onClick={output.stop} disabled={idle}>
+        <ActionButton icon="square" onClick={output.stop} disabled={idle}>
           Stop speaking
         </ActionButton>
-        {!idle && (
-          <p className="font-semibold">{speaking ? "● Reading the answer aloud…" : "❚❚ Paused"}</p>
-        )}
       </div>
 
-      {output.error && (
-        <p role="alert" className="rounded-lg border-2 border-warning-border bg-warning-bg p-3 text-warning-foreground">
-          {output.error.message}
+      {!idle && (
+        <p className="flex items-center gap-2 font-bold text-primary">
+          <Icon name={speaking ? "volume-2" : "pause"} size={0.95} />
+          {speaking ? "Reading the answer aloud…" : "Paused"}
         </p>
       )}
 
+      {output.error && (
+        <div role="alert" className="callout callout-warning">
+          <Icon name="triangle-alert" className="mt-0.5" />
+          <p>{output.error.message}</p>
+        </div>
+      )}
+
       {output.notes.length > 0 && !output.error && (
-        <ul className="list-disc space-y-1 pl-5 text-sm" aria-label="About the voice">
+        <ul className="list-disc space-y-1 pl-5 text-caption text-muted" aria-label="About the voice">
           {output.notes.map((note) => (
             <li key={note}>{note}</li>
           ))}

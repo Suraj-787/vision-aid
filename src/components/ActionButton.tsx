@@ -1,13 +1,17 @@
 import type { ReactNode, Ref } from "react";
+import { Icon, type IconName } from "@/components/Icon";
 
 interface ActionButtonProps {
   children: ReactNode;
   onClick: () => void;
   /** Uses aria-disabled (not `disabled`) so the button stays focusable and keeps its place. */
   disabled?: boolean;
-  variant?: "primary" | "secondary";
-  /** Large, full-width tap target for the main action. */
+  /** primary: the one main action; secondary: supporting; quiet: low emphasis. */
+  variant?: "primary" | "secondary" | "quiet";
+  /** Full-width, taller target for the main action. */
   large?: boolean;
+  /** A decorative icon before the label (the label always carries the meaning). */
+  icon?: IconName;
   describedBy?: string;
   ref?: Ref<HTMLButtonElement>;
 }
@@ -18,15 +22,10 @@ export function ActionButton({
   disabled = false,
   variant = "secondary",
   large = false,
+  icon,
   describedBy,
   ref,
 }: ActionButtonProps) {
-  const size = large ? "min-h-16 w-full px-6 py-4 text-xl font-bold" : "min-h-12 px-5 py-3 text-base font-semibold";
-  const color =
-    variant === "primary"
-      ? "border-accent bg-accent text-accent-foreground"
-      : "border-border bg-background text-foreground";
-
   return (
     <button
       ref={ref}
@@ -36,9 +35,10 @@ export function ActionButton({
       onClick={() => {
         if (!disabled) onClick();
       }}
-      className={`rounded-xl border-2 aria-disabled:cursor-not-allowed aria-disabled:opacity-60 ${size} ${color}`}
+      className={`btn btn-${variant} ${large ? "btn-large" : ""}`}
     >
-      {children}
+      {icon && <Icon name={icon} size={large ? 1.1 : 1} />}
+      <span>{children}</span>
     </button>
   );
 }

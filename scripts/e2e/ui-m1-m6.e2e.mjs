@@ -229,20 +229,20 @@ async (a) => {
 
 await scenario("9. Camera, capture, retake, Stop camera and microphone test still work", () => ok(), async (a) => {
   await a.click("Start camera"); await a.wait("Capture photo");
-  const cam = await a.page.evaluate(() => [...document.querySelectorAll("dt")].find((d) => d.textContent === "Camera").nextSibling.textContent);
-  must(cam.startsWith("On"), "camera starts on tap", cam);
+  const cam = await a.page.evaluate(() => document.querySelector('.chip[role="status"]').textContent);
+  must(cam.startsWith("Camera on"), "camera starts on tap (status chip says Camera on)", cam);
   await sleep(400); await a.click("Capture photo"); await a.wait("Retake photo");
   must(await a.page.evaluate(() => { const i = document.querySelector('img[alt^="The photo you captured"]'); return !!i && i.naturalWidth > 0 && Math.max(i.naturalWidth, i.naturalHeight) <= 1280; }), "captured image shown, at most 1280 px (raised from 768 in Milestone 8)");
   await a.click("Retake photo"); await a.wait("Capture photo");
   await a.click("Capture photo"); await a.wait("Retake photo");
   await a.click("Stop camera"); await sleep(300);
-  must((await a.page.evaluate(() => [...document.querySelectorAll("dt")].find((d) => d.textContent === "Camera").nextSibling.textContent)).startsWith("Off"), "Stop camera turns the camera off");
-  await a.page.evaluate(() => { document.querySelector("details").open = true; });
+  must((await a.page.evaluate(() => document.querySelector('.chip[role="status"]').textContent)).startsWith("Camera off"), "Stop camera turns the camera off (status chip says Camera off)");
+  await a.page.evaluate(() => { [...document.querySelectorAll("details")].find((d) => d.textContent.includes("Microphone test")).open = true; });
   await a.click("Start microphone");
-  await a.page.waitForFunction(() => [...document.querySelectorAll("dt")].find((d) => d.textContent === "Microphone").nextSibling.textContent.startsWith("On"), { timeout: 8000 });
+  await a.page.waitForFunction(() => document.querySelector("#mic-heading").closest("section").querySelector('[role="status"]').textContent.startsWith("Microphone is on"), { timeout: 8000 });
   must(true, "microphone test starts (Milestone 2)");
   await a.click("Stop microphone"); await sleep(300);
-  must((await a.page.evaluate(() => [...document.querySelectorAll("dt")].find((d) => d.textContent === "Microphone").nextSibling.textContent)) === "Off", "microphone test stops");
+  must((await a.page.evaluate(() => document.querySelector("#mic-heading").closest("section").querySelector('[role="status"]').textContent)).startsWith("Microphone is off"), "microphone test stops");
 });
 
 console.log(log.join("\n"));

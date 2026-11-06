@@ -69,6 +69,10 @@ What to expect, honestly:
 | 7 Voice interaction and languages | ✅ built, awaiting review | Listen/Pause/Stop, en / hi / kn selector, `response_language`, multilingual print rules; physical-device tests still to do; Sarvam not integrated |
 | 8 Final validation and production readiness | ✅ built, awaiting review | Audit + fixes: sharper photos, Cancel frees the server slot, security headers, browser/a11y test scripts. **Physical-device testing still to do** |
 
+The interface follows the "Calm Clarity" design system: teal and amber, Atkinson Hyperlegible, a viewfinder motif, WCAG 2.2 AA contrast, light and dark. See `docs/design-system.md`.
+
+![Answer screen on a phone](docs/screenshots/mobile-light-4-answer.png)
+
 Work proceeds one milestone at a time (see `AGENTS.md`, `docs/implementation-roadmap.md`).
 
 ## Architecture in brief

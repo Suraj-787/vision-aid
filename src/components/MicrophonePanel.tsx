@@ -3,8 +3,6 @@ import { INPUT_SAMPLE_RATE } from "@/lib/audio/pcm";
 
 type MicrophonePanelProps = ReturnType<typeof useMicrophone>;
 
-const buttonBase =
-  "min-h-12 rounded-lg border-2 px-5 py-3 text-base font-semibold aria-disabled:cursor-not-allowed aria-disabled:opacity-60";
 
 export function MicrophonePanel({
   status,
@@ -36,10 +34,7 @@ export function MicrophonePanel({
       <p role="status">{statusText}</p>
 
       {error && (
-        <p
-          role="alert"
-          className="rounded-lg border-2 border-warning-border bg-warning-bg p-3 text-warning-foreground"
-        >
+        <p role="alert" className="callout callout-danger">
           {error.message}
         </p>
       )}
@@ -49,14 +44,14 @@ export function MicrophonePanel({
           {/* Visual aid only; a constantly changing value is not announced. */}
           <div
             aria-hidden="true"
-            className="h-3 w-full overflow-hidden rounded-full border border-border bg-surface"
+            className="h-3 w-full overflow-hidden rounded-full border border-border-strong bg-surface"
           >
             <div
-              className="h-full bg-accent"
+              className="h-full bg-primary"
               style={{ width: `${Math.round(meter.level * 100)}%` }}
             />
           </div>
-          <p className="text-sm text-muted">
+          <p className="text-caption text-muted">
             Converted {meter.seconds.toFixed(1)} s of audio to{" "}
             {INPUT_SAMPLE_RATE / 1000} kHz mono 16-bit PCM (device rate{" "}
             {inputSampleRate} Hz).
@@ -69,7 +64,7 @@ export function MicrophonePanel({
           type="button"
           aria-disabled={!canStart}
           onClick={() => canStart && void start()}
-          className={`${buttonBase} border-accent bg-accent text-accent-foreground`}
+          className="btn btn-primary"
         >
           Start microphone
         </button>
@@ -77,13 +72,13 @@ export function MicrophonePanel({
           type="button"
           aria-disabled={!canStop}
           onClick={() => canStop && stop()}
-          className={`${buttonBase} border-border bg-background text-foreground`}
+          className="btn btn-secondary"
         >
           Stop microphone
         </button>
       </div>
 
-      <p className="text-sm text-muted">
+      <p className="text-caption text-muted">
         This only tests that your microphone works. Sound is converted on this
         device and immediately discarded: it is not recorded, saved or sent to
         any service.

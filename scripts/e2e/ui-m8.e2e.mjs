@@ -244,7 +244,7 @@ await scenario("8. Production security headers and no policy violations during a
   must(/camera=\(self\)/.test(h["permissions-policy"] ?? ""), "permissions policy limits camera/microphone to this site");
   const get = await a.page.evaluate(async () => { const r = await fetch("/api/live-token"); return r.status; });
   must(get === 405 || get === 404, "live-token is not a GET endpoint", String(get));
-  await a.pick("hi-IN"); await a.setup("यह क्या है?"); await a.askAndWait();
+  await a.setup("यह क्या है?"); await a.pick("hi-IN"); await a.askAndWait();
   must((await a.answerText()).includes(HI), "a full camera -> photo -> answer flow works under the policy (no console errors are collected by the harness)");
   await a.click("Listen to answer"); await a.wait("Pause"); await a.click("Stop speaking");
   must(true, "speech controls work under the policy");
