@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import { ActionButton } from "@/components/ActionButton";
+import { AnswerView } from "@/components/AnswerView";
+import { SendFailure, SendingView } from "@/components/AskProgress";
 import { CapturedImageReview } from "@/components/CapturedImageReview";
 import { QuestionInput } from "@/components/QuestionInput";
 import type { useAsk } from "@/hooks/useAsk";
@@ -17,8 +19,9 @@ interface AskPanelProps {
 }
 
 /**
- * The Tap-to-Ask controls: start camera -> capture -> review -> question -> Ask.
- * Frontend only in Milestone 4: "Ask" prepares the request locally and sends nothing.
+ * The Tap-to-Ask controls: start camera -> capture -> review -> question -> Ask
+ * -> (sending) -> answer. Tapping Ask is the only thing that sends anything: it
+ * sends the already-captured photo and the question to the server.
  */
 export function AskPanel({ ask, cameraStatus, onStartCamera, onStopCamera }: AskPanelProps) {
   const primaryRef = useRef<HTMLButtonElement>(null);
@@ -26,6 +29,10 @@ export function AskPanel({ ask, cameraStatus, onStartCamera, onStopCamera }: Ask
   const busyCapturing = ask.phase === "capturing";
 
   const focusPrimary = () => requestAnimationFrame(() => primaryRef.current?.focus());
+
+  const answered = ask.phase === "answered" && ask.result !== null;
+  const failed = ask.phase === "send-failed" && ask.sendError !== null;
+  const sending = ask.phase === "sending";
 
   return (
     <div className="space-y-4">
@@ -87,9 +94,20 @@ export function AskPanel({ ask, cameraStatus, onStartCamera, onStopCamera }: Ask
             }}
           />
 
-          {ask.phase === "ready-to-submit" ? (
-            <RequestReady ask={ask} />
-          ) : (
+          {sending && <SendingView question={ask.question.trim()} />}
+
+          {answered && ask.result && <AnswerView result={ask.result} onAskAnother={ask.askAnother} />}
+
+          {failed && ask.sendError && (
+            <SendFailure
+              error={ask.sendError}
+              canRetry={ask.can.retry}
+              onRetry={ask.retry}
+              onEdit={ask.edit}
+            />
+          )}
+
+          {!sending && !answered && !failed && (
             <>
               <QuestionInput ask={ask} />
               <div className="space-y-2">
@@ -98,17 +116,21 @@ export function AskPanel({ ask, cameraStatus, onStartCamera, onStopCamera }: Ask
                   variant="primary"
                   onClick={ask.ask}
                   disabled={!ask.can.ask}
-                  describedBy="ask-hint"
+                  describedBy="ask-hint ask-disclosure"
                 >
                   Ask
                 </ActionButton>
                 <p id="ask-hint" className="text-sm text-muted">
-                  {ask.askBlockedReason ?? "Ready. Tap Ask to prepare your request."}
+                  {ask.askBlockedReason ?? "Ready. Tap Ask to get an answer."}
+                </p>
+                <p id="ask-disclosure" className="text-sm">
+                  When you tap Ask, this photo and your question are sent to Google&apos;s Gemini
+                  service, through VisionAid&apos;s server, to get an answer. Nothing is sent
+                  before then, and VisionAid does not store them.
                 </p>
               </div>
             </>
           )}
-
         </>
       )}
 
@@ -120,7 +142,7 @@ export function AskPanel({ ask, cameraStatus, onStartCamera, onStopCamera }: Ask
               focusPrimary();
             }}
           >
-            Cancel
+            {answered ? "Done" : "Cancel"}
           </ActionButton>
         )}
         {cameraOn && (
@@ -131,38 +153,9 @@ export function AskPanel({ ask, cameraStatus, onStartCamera, onStopCamera }: Ask
       </div>
 
       <p className="text-sm text-muted">
-        Your photo and typed question stay on this device in this version. Nothing is sent to an AI
-        service yet.
+        Your photo and question stay on this device until you tap Ask. VisionAid does not save
+        them.
       </p>
     </div>
-  );
-}
-
-/** The local "request is ready" state shown after Ask. Nothing is transmitted. */
-function RequestReady({ ask }: { ask: AskController }) {
-  const headingRef = useRef<HTMLHeadingElement>(null);
-  useEffect(() => headingRef.current?.focus(), []);
-
-  return (
-    <section
-      aria-labelledby="ready-heading"
-      className="space-y-3 rounded-lg border-2 border-accent bg-surface p-4"
-    >
-      <h3 id="ready-heading" ref={headingRef} tabIndex={-1} className="text-lg font-bold">
-        Request ready
-      </h3>
-      <p>
-        Your photo
-        {ask.prepared ? ` (${ask.prepared.width} × ${ask.prepared.height})` : ""} and your question
-        are prepared on this device:
-      </p>
-      <blockquote className="whitespace-pre-wrap rounded-lg border border-border bg-background p-3 text-lg">
-        {ask.prepared?.question}
-      </blockquote>
-      <p className="font-semibold">
-        Nothing has been sent. Asking the AI is not available in this version.
-      </p>
-      <ActionButton onClick={ask.edit}>Edit question</ActionButton>
-    </section>
   );
 }

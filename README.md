@@ -36,9 +36,9 @@ Languages targeted: English, Hindi, Kannada.
 | 1 Camera preview | ✅ | Reused for Tap-to-Ask capture |
 | 2 Audio primitives (PCM16) | ✅ | Kept for optional Live Mode / Sarvam reuse |
 | 3 Live token endpoint | ✅ | Kept for optional Live Mode; not used by Tap-to-Ask |
-| 4 Tap-to-Ask interface | ✅ built, awaiting review | Capture one photo, speak or type a question, "ready" state; nothing sent |
-| 5 Gemini image understanding | next | `POST /api/ask`, structured output, spoken answers |
-| 6 Accessibility tools | | Text, expiry, currency, medicine labels |
+| 4 Tap-to-Ask interface | ✅ | Capture one photo, speak or type a question |
+| 5 Gemini image understanding | ✅ built, awaiting review | `POST /api/ask` -> one Gemini request -> validated answer shown as text |
+| 6 Accessibility tools | next | Text, expiry, currency, medicine labels |
 | 7 Multilingual | | en / hi / kn evaluation, optional Sarvam |
 | 8 Reliability and evaluation | | Quality checks, accuracy, real devices, demo |
 
@@ -52,7 +52,7 @@ Phone browser ── camera preview → one still → downscale/JPEG
               ── POST /api/ask {image, question, lang}
 Next.js server ── validate · rate limit · ONE models.generateContent call (JSON schema)
               ── validate output · deterministic expiry/currency/safety logic
-Phone browser ── answer text (aria-live) + speechSynthesis
+Phone browser ── answer shown as text in an announced region (spoken answers: planned)
 ```
 
 Details: `docs/architecture.md`.
@@ -68,15 +68,19 @@ Details: `docs/architecture.md`.
 
 ```bash
 npm install
-cp .env.example .env.local   # fill in GEMINI_API_KEY; never commit it
+cp .env.example .env.local   # then set GEMINI_API_KEY and GEMINI_MODEL; never commit it
 npm run dev
 ```
+
+`GEMINI_MODEL` has no default: choose a model after confirming in Google AI
+Studio that it is available to your project (see `docs/ask-api.md`). Without it,
+tapping Ask shows a clear configuration error. `.env` works as well as `.env.local`.
 
 Open `http://localhost:3000`. Camera and microphone require a secure context:
 localhost for development, HTTPS for phone testing (e.g. an ngrok tunnel;
 `next.config.ts` allows ngrok hostnames for dev assets).
 
-Checks: `npm run lint`, `npm run typecheck`, `npm run build`, `npm test` (unit tests use Node's built-in runner with type stripping, so they need Node 22.6 or newer and add no dependency).
+Checks: `npm run lint`, `npm run typecheck`, `npm run build`, `npm test` (unit tests use Node's built-in runner with type stripping, so they need Node 22.6 or newer and add no dependency). The tests never call the real Gemini API: see "Testing without real API calls" in `docs/ask-api.md`.
 
 ## Environment variables
 
@@ -84,8 +88,8 @@ All are server-only; see `.env.example`. Never use `NEXT_PUBLIC_*` for keys.
 
 | Variable | Used by | Notes |
 |---|---|---|
-| `GEMINI_API_KEY` | `/api/ask` (M5), `/api/live-token` | Required |
-| `GEMINI_MODEL` | `/api/ask` (M5) | Flash-family model ID; verify availability and quota for your project in Google AI Studio (`docs/model-and-quota-notes.md`) |
+| `GEMINI_API_KEY` | `/api/ask`, `/api/live-token` | Required |
+| `GEMINI_MODEL` | `/api/ask` | **Required, no default.** A model ID you choose after confirming in Google AI Studio that it is available to your project (tier and quota) and supports images + JSON output. See `docs/ask-api.md` |
 | `ENABLE_LIVE_MODE` | `/api/live-token` | Default `false`; must be exactly `true` for the endpoint to mint tokens |
 | `GEMINI_LIVE_MODEL` | `/api/live-token` | Optional Live Mode only; allowlisted |
 | `ALLOWED_ORIGINS` | API routes | Optional extra allowed origins |
@@ -94,12 +98,14 @@ All are server-only; see `.env.example`. Never use `NEXT_PUBLIC_*` for keys.
 ## Privacy
 
 - Camera and microphone start only when you tap, with clear stop controls.
-- When you ask, the photo and question go to Google's Gemini API through
-  VisionAid's server. Browser speech recognition may process your audio through
+- Nothing is sent until you tap **Ask**. Then the photo you captured and your
+  question go to Google's Gemini API through VisionAid's server (one request per
+  question; Google handles them under its own terms and may retain them). Browser speech recognition may process your audio through
   an external browser/provider service (on-device recognition is not available
   on mobile); typing is always available instead. Sarvam STT is optional for
   Milestone 7 and not integrated.
-- Nothing is stored; images, audio, questions, answers, keys and tokens are never logged.
+- VisionAid stores nothing (no database, localStorage, files or cookies); images,
+  audio, questions, answers, keys and tokens are never logged.
 - **Free tier:** Google's pricing page says Free-tier content is used to improve
   its products. Do not send personal, medical, financial or bystander
   information while testing on the free tier; use staged scenes and consenting
@@ -121,5 +127,6 @@ disabled unless `ENABLE_LIVE_MODE=true` is set on the server.
 - `docs/testing-checklist.md` — manual and technical checks
 - `docs/model-and-quota-notes.md` — model choice, quotas, free-tier caution
 - `docs/audio-pipeline.md` — microphone PCM16 pipeline (Live Mode / reuse)
+- `docs/ask-api.md` — `POST /api/ask`: setup, request/response, errors, limits, privacy
 - `docs/live-token.md` — ephemeral token endpoint (Live Mode)
 - `docs/dependency-audit.md` — npm audit status

@@ -9,7 +9,7 @@
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test --test-reporter=spec \"src/**/*.test.ts\""
+    "test": "node --import ./scripts/test-register.mjs --experimental-strip-types --disable-warning=ExperimentalWarning --test --test-reporter=spec \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@google/genai": "^2.32.0",

@@ -59,21 +59,33 @@ with `npm test`), browser modules (`capture.ts`, `web-speech.ts`), hooks
 (quality 0.8); quality checks are advisory only and never block. Real-device
 testing on phones is still outstanding.
 
-## Milestone 5 — Gemini image understanding
+## Milestone 5 — Gemini image understanding ✅ (implemented 2026-11-04; awaiting review)
 - User confirms the exact `GEMINI_MODEL`, tier and quota in Google AI Studio;
   re-verify structured-output field names and image limits in current docs.
 - Integrate with `models.generateContent` (planned initial API).
 - `POST /api/ask` with validation, rate limit, in-flight guard, safe errors.
 - One multimodal request: image + question + server-side system instruction +
   JSON schema.
-- Server-side schema validation and normalisation; generic retake on invalid output.
-- Spoken answers via `speechSynthesis` with Stop speaking; answer also in an
-  `aria-live` region.
-- 429 / quota handling, at most one retry for transient failures.
+- Server-side schema validation; a controlled error on invalid output.
+- Answer shown as text in an `aria-live`-announced region; Ask-flow states
+  `sending`, `answered`, `send-failed`, with Try again and Ask another question.
+- 429 / quota handling with **no automatic retries** (changed from "at most one
+  retry": a retry could silently use extra quota, so the user chooses Try again).
+- **Not in this milestone, by decision:** spoken answers (`speechSynthesis`). They
+  remain designed in `docs/architecture.md` and need to be scheduled (proposal:
+  with the Milestone 7 voice evaluation, or earlier if you prefer).
 
-**Acceptance:** A user asks about a staged scene and hears a short, uncertain-
-where-appropriate answer; malformed model output never reaches the user; no key
-or media in logs/bundles.
+**Acceptance:** A user asks about a staged scene and reads a short,
+uncertain-where-appropriate answer; malformed model output never reaches the
+user; no key or media in logs/bundles.
+
+**As built:** `/api/ask` and `src/lib/server/ask/*` (see `docs/ask-api.md`), the
+shared contract in `src/lib/ask/`, the answer, loading and error views, and
+tests: `npm test` (244 unit and API tests, including the real SDK against a fake
+Gemini server) plus mocked-API browser tests. The answer has five fields
+(`answer`, `details`, `uncertainty`, `printed_text`, `printed_instructions`);
+the richer intent/confidence schema is deferred to Milestone 6. Testing against
+the real Gemini API with your chosen `GEMINI_MODEL` is still outstanding.
 
 ## Milestone 6 — Accessibility tools
 - Text reading (signs, notices, labels) with retake guidance.

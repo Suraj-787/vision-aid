@@ -25,7 +25,7 @@ export type LiveServerConfig =
 // an implausible length. Printable non-space ASCII is accepted.
 const API_KEY_PATTERN = /^[\x21-\x7e]{20,512}$/;
 
-function looksLikeApiKey(value: string): boolean {
+export function looksLikeApiKey(value: string): boolean {
   return (
     API_KEY_PATTERN.test(value) &&
     !/["'`]/.test(value) &&

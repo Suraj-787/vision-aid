@@ -5,8 +5,8 @@ on **2026-11-02** and must be re-verified before Milestone 5 and before any demo
 
 ## Tap-to-Ask model (primary)
 
-Configured server-side with `GEMINI_MODEL` (read from Milestone 5; no default
-model is assumed). Must be a Flash-family model with image input and structured
+Configured server-side with `GEMINI_MODEL`, read by `POST /api/ask` (no default
+model: if it is unset the endpoint reports a configuration error and calls nothing). Must be a Flash-family model with image input and structured
 outputs.
 
 **Do not assume a model is free or has quota.** Free-tier availability, limits
@@ -45,14 +45,33 @@ still unknown.
   helps fine text but costs tokens and latency. Tune in Milestone 8.
 - Inline data limit: 100 MB per request (50 MB for PDFs). Our images are far smaller.
 
+### Observed availability (2026-11-05, point in time only)
+With a real key, the exact `/api/ask` request (image, system instruction, JSON
+schema) returned a correct structured answer from `gemini-3.5-flash-lite`, so the
+request shape is accepted by the real API. Several requests to both
+`gemini-3.8-flash` and `gemini-3.5-flash-lite` intermittently failed with 503
+`UNAVAILABLE` ("high demand") or 504 `DEADLINE_EXCEEDED`, including plain
+text-only requests, so these are Google capacity conditions. Availability changes
+from minute to minute and per model; re-check in AI Studio and use Try again.
+
+### Structured output facts (docs checked 2026-11-04)
+- JSON Schema subset: nullable fields use `{"type": ["string", "null"]}`; `required`
+  and `additionalProperties` are supported. `minLength`/`maxLength` are **not**
+  enforced by the API (they are stripped), so VisionAid enforces its own length
+  limits in `src/lib/ask/ask-result.ts`.
+- The docs say the output is syntactically valid JSON but values must still be
+  validated by the application, which `/api/ask` does for every field.
+
 ### API surface
-**Planned initial integration: `ai.models.generateContent`** — one stateless
+**Used by `/api/ask` (Milestone 5): `ai.models.generateContent`** — one stateless
 request per question carrying the image part, the question, a system
-instruction, `responseMimeType: "application/json"` and `responseJsonSchema`
-(plus `mediaResolution` / thinking settings). These fields exist in the
-installed `@google/genai` 2.32.0. The SDK also has a newer `ai.interactions`
-client, which the current docs lead with; it is not used initially. Field names
-and behaviour are re-verified at the start of Milestone 5.
+instruction, `responseMimeType: "application/json"` and `responseJsonSchema`.
+No thinking, media-resolution or output-token settings are sent: they are model
+specific (for example some models reject certain thinking levels) and the model is
+your choice. These fields exist in the installed `@google/genai` 2.32.0. The SDK also has a newer `ai.interactions`
+client, which the current docs lead with; it is not used. Field names were
+re-verified for Milestone 5 on 2026-11-04 (`responseMimeType`, `responseJsonSchema`,
+`systemInstruction`, `httpOptions.timeout`, `httpOptions.retryOptions`).
 
 ## Quotas
 

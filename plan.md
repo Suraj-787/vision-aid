@@ -14,17 +14,19 @@ navigation or safety tool.
 ## 2. Primary interaction
 
 **Camera preview → capture one image → speak or type a question → process image
-and question together → display and speak the answer.**
+and question together → display the answer** (speaking it aloud is planned).
 
 1. The user starts the camera preview.
-2. The user taps a large, accessible **Ask** button; the app captures **one** image.
+2. The user taps a large, accessible **Capture photo** button; the app captures **one** image.
 3. The user asks a question by speech or by typing (typing is always available).
 4. Speech is converted to text.
-5. Image and question are sent together, in **one** request, to a server-side
-   Gemini Flash-family model (`models.generateContent`).
+5. The user taps **Ask**. The captured image and the question are sent together,
+   in **one** request, to a server-side Gemini model (`models.generateContent`).
 6. Gemini returns a structured JSON response.
-7. Deterministic application code validates and post-processes it.
-8. The answer is shown as text and spoken aloud.
+7. Application code validates it (Milestone 5); deterministic post-processing such
+   as expiry comparison and safety checks follows in Milestone 6.
+8. The answer is shown as text in an announced region. Speaking it aloud is
+   planned but not built (excluded from Milestone 5).
 
 No continuous audio or video streaming is needed for the primary functionality.
 
@@ -67,7 +69,8 @@ No continuous audio or video streaming is needed for the primary functionality.
 - Speech input (Web Speech API where supported) with a text-input fallback.
 - Server-side `POST /api/ask` with one Gemini multimodal request per question.
 - Structured output, validated server-side; deterministic expiry and currency logic.
-- Spoken answers (`speechSynthesis`) with a stop control; text always shown.
+- Answers shown as text in an announced region (built). Spoken answers
+  (`speechSynthesis`) with a stop control are planned and not yet scheduled.
 - Safety, privacy and uncertainty language throughout.
 - English, Hindi and Kannada evaluation.
 

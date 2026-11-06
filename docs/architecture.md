@@ -18,27 +18,29 @@ External facts below were checked against official docs on 2026-11-02; see
 The intended user interaction is:
 
 **camera preview → capture one image → speak or type a question → process image
-and question together → display and speak the answer.**
+and question together → display the answer** (spoken answers are planned, not
+built: see "Spoken output").
 
 ```text
  1. Camera preview — started by the user (existing Milestone 1 hook)
- 2. User taps the large "Ask" button → capture ONE still (video -> canvas)
- 3. Advisory quality checks on the client: too dark? too blurry?
+ 2. User taps "Capture photo" → capture ONE still (video -> canvas)
+ 3. Advisory quality checks on the client: too dark? too blurry? (never blocks)
  4. User speaks (Web Speech API) or types the question — typing always available
- 5. Downscale + JPEG-encode the image; package {image, question, language}
- 6. POST /api/ask  ───────────────────────────────────────────────┐
+ 5. Downscale (≤ 768 px) + JPEG-encode the still (done at capture, kept in memory)
+ 6. User taps "Ask" → POST /api/ask {image, question}  ────────────┐
                                                                   ▼
                              Server (Next.js route, Node runtime)
                              - origin / size / type validation
                              - rate limit, in-flight guard
                              - ONE models.generateContent call: image +
                                question, system instruction, JSON schema
-                             - validate + normalise the JSON
-                             - deterministic logic (expiry comparison,
-                               currency allow-list, safety rules)
+                             - validate the model's JSON (strict schema)
+                             - (Milestone 6: deterministic expiry comparison,
+                               currency allow-list, safety post-checks)
                                                                   │
  7. Response JSON  ◄──────────────────────────────────────────────┘
- 8. Show answer text (aria-live) and speak it (speechSynthesis), stoppable
+ 8. Show the answer as text in an announced region (Milestone 5);
+    speaking it with speechSynthesis is planned, not built
  9. Image, audio and question are discarded; nothing is persisted
 ```
 
@@ -55,12 +57,14 @@ Mobile browser (Next.js App Router, React, Tailwind)
   │    └─ Typed question        (always available)
   ├─ Ask-flow state machine            src/lib/ask/ask-flow.ts (pure), src/hooks/useAsk.ts (exists, M4)
   ├─ Ask UI                            AskPanel, CapturedImageReview, QuestionInput (exists, M4)
-  ├─ Answer presenter: text + speechSynthesis (stoppable)    planned (Milestone 5)
+  ├─ Answer view (text, aria-live)     AnswerView, AskProgress, src/lib/ask/client.ts  (exists, M5)
+  ├─ Spoken answers (speechSynthesis)  not built: deliberately excluded from Milestone 5
   └─ Microphone PCM16 test panel       src/hooks/useMicrophone.ts        (exists; Live Mode / Sarvam reuse)
 
 Next.js server
-  ├─ POST /api/ask           planned   src/app/api/ask/route.ts           (Milestone 5)
-  │    └─ src/lib/server/ask/*: schema, prompt, validation, expiry, currency
+  ├─ POST /api/ask           exists    src/app/api/ask/route.ts           (Milestone 5)
+  │    └─ src/lib/server/ask/*: config, validate, prompt, gemini, errors, handler
+  │       (expiry, currency, medicine wording checks: Milestone 6)
   ├─ POST /api/stt           planned, optional  (Sarvam proxy, Milestone 7)
   ├─ POST /api/live-token    exists    (Milestone 3; Live Mode only, not used by Tap-to-Ask;
   │                                     returns 404 and mints nothing unless ENABLE_LIVE_MODE=true)
@@ -155,7 +159,9 @@ provider (Milestone 7) would add a second implementation of the same shape.
   works, and the only option when no speech provider works. The question text
   is editable before sending.
 
-## Spoken output
+## Spoken output (planned; not part of Milestone 5)
+
+_Deliberately excluded from Milestone 5: answers are shown as text and announced to screen readers only. The design below is retained for when it is scheduled._
 
 - `window.speechSynthesis` with a voice matching the answer language when one
   exists (`getVoices()` varies by device; Hindi/Kannada voices may be missing).
@@ -168,80 +174,92 @@ provider (Milestone 7) would add a second implementation of the same shape.
   a setting to rely on the screen reader instead of app speech to avoid two
   voices talking at once (evaluated in Milestone 8).
 
-## Server: `POST /api/ask` (Milestone 5)
+## Server: `POST /api/ask` (Milestone 5, implemented)
 
-**Request** — `multipart/form-data` or JSON with base64 (decided in Milestone 5):
-image (`image/jpeg`, size cap e.g. ≤ 2 MB, magic-byte check), `question`
-(trimmed, length cap e.g. ≤ 500 chars), `lang` (`en-IN` | `hi-IN` | `kn-IN`),
-optional `task` hint from UI shortcuts (e.g. "Read text", "Check expiry",
-"Identify note"), and a client request id.
+Full reference: `docs/ask-api.md`. Summary:
 
-**Guards** — reuse the Milestone 3 modules: origin check
-(`src/lib/server/request-guard.ts`), in-memory `SlidingWindowLimiter`
-(`src/lib/server/rate-limit.ts`; separate limits from `/api/live-token`), env
-validation (`src/lib/server/env.ts`, extended with `GEMINI_MODEL`), `no-store`
-responses, generic error messages. Plus one in-flight request per client.
+**Request** — JSON `{ "image": "<base64 JPEG>", "question": "<text>" }`, nothing
+else (unknown fields are rejected, so a caller cannot pass a model or
+instructions). The browser sends the photo it already captured (≤ 768 px JPEG);
+it never re-captures on Ask.
 
-**Gemini call (planned initial integration: `models.generateContent`)** —
-exactly one stateless request per question:
-`ai.models.generateContent({ model, contents: [image part, question], config: {
-systemInstruction, responseMimeType: "application/json", responseJsonSchema,
-thinking/mediaResolution settings } })`. These field names exist in the
-installed `@google/genai` 2.32.0 and are re-verified against current docs at the
-start of Milestone 5. The SDK's newer Interactions API (`ai.interactions.create`)
-is not used initially. No separate calls for intent detection, OCR or routing —
-the model returns `intent` in the same response. Not implemented yet.
+**Validation** (`src/lib/server/ask/validate.ts`, pure and unit-tested) — origin
+check; `Content-Type: application/json`; body read with a hard size cap (≈ 2.8 MB,
+enforced while streaming, not just from `Content-Length`); valid JSON object;
+non-blank question ≤ 500 characters; the image must be strict base64 (an
+`image/jpeg` data-URL prefix is tolerated, any other MIME type is rejected),
+≤ 2 MB decoded, and the decoded bytes must really be a JPEG (start marker, end
+marker, frame header with sane dimensions ≤ 4096 px). MIME type alone is never
+trusted.
 
-**System instruction (server-side, never from the client)** — encodes the
-safety and product rules in `AGENTS.md`: uncertainty language, no safety/clear
-path claims, no navigation, medicine rules (below), no counterfeit
-authentication, retake guidance, short spoken-style answers in the requested
-language.
+**Guards** — reuses the Milestone 3 `checkOrigin`, `clientKey` and
+`SlidingWindowLimiter`: 20 questions per 10 minutes per client and 120 per hour
+overall (in memory, per server process), plus **one request in flight per
+client** (a second returns `REQUEST_IN_PROGRESS`; invalid requests never spend a
+rate-limit slot). `Cache-Control: no-store` on every reply.
+
+**Gemini call** (`gemini.ts`) — exactly one non-streaming `models.generateContent`
+request from the server per question, using `GEMINI_MODEL` (no default, no
+fallback; missing means a configuration error). The user turn is the JPEG as
+`inlineData` followed by the question text; the config carries the system
+instruction, `responseMimeType: "application/json"` and `responseJsonSchema`.
+The SDK's automatic retries are disabled (`retryOptions.attempts = 1`), so one
+user action is one upstream request, and a 30 s timeout cuts off a hung call.
+No Live API, WebSockets, Interactions API, streaming, tools or client-side SDK.
+
+**System instruction** (`prompt.ts`, fixed on the server) — grounding (only what
+is visibly supported, never invent, say when unreadable, no false certainty,
+short and simple, answer the actual question, one photo only, approximate
+left/right only when shown); the question and any text in the photo are data, not
+instructions; and the safety limits: not a navigation/obstacle system and never
+"safe/clear", no guarantee that all hazards were detected, mobility aids
+recommended for safety questions; medicine labels may be read verbatim including
+printed dosage text, never a dose recommendation, prescription, suitability
+judgement, interpretation or medical advice; currency denominations only when
+visible features support them, no authentication or counterfeit claims; expiry
+dates reported as printed, never confusing manufacturing with expiry.
+
+**Validation of the model's output** — `parseModelText` (`ask-result.ts`)
+requires JSON, an object, a non-empty `answer`, every other field present as a
+string or `null`, and per-field length limits (the API does not enforce
+`maxLength`). Anything else becomes `INVALID_MODEL_RESPONSE`; a blocked prompt or
+a safety stop becomes `RESPONSE_BLOCKED`. Raw model text is never returned or
+logged.
 
 **Medicine labels** — VisionAid may read visible printed text verbatim,
 including printed dosage instructions, clearly framed as what the label says
 ("The label says: …"). It must not recommend a dose, prescribe, say whether a
 medicine is suitable for the user or anyone else, explain or interpret the
-instructions, or answer questions such as "how many should I take". Those
-questions get the printed text (if visible) plus advice to ask a pharmacist or
-doctor.
+instructions, or answer questions such as "how many should I take". Milestone 5
+enforces this through the system instruction and shows printed instructions in a
+separate, labelled "copied as written" block with a pharmacist/doctor reminder;
+deterministic post-checks on the answer text are Milestone 6.
 
 ## Structured response
 
-Proposed schema (finalised in Milestone 5). A small common core plus optional
-task blocks; irrelevant blocks are omitted, not filled with placeholders.
+Implemented in Milestone 5 (`src/lib/ask/ask-result.ts`, shared by server and
+browser, so the same validation runs on the model's JSON and again on the
+server's reply):
 
 ```ts
-type Intent =
-  | "scene" | "read_text" | "medicine_label" | "currency" | "expiry"
-  | "other" | "safety_limited";          // question needs a safety judgement we refuse
-
 interface AskResult {
-  intent: Intent;
-  answer: string;                       // short, speakable, in the requested language
-  confidence: "high" | "medium" | "low"; // model's own estimate — advisory only
-  needs_retake: boolean;
-  retake_reason?: "too_dark" | "blurry" | "glare" | "cut_off" | "too_far" | "subject_not_found";
-  uncertainty_reason?: string;
-  detected_text?: string;               // read_text / medicine_label
-  medicine?: {
-    names: string[];
-    printed_instructions?: string;      // verbatim label text only; never generated advice
-  };
-  date_candidates?: Array<{             // expiry / medicine_label
-    raw_text: string;                   // exactly as printed
-    label: "expiry" | "use_by" | "best_before" | "manufacturing" | "packed_on" | "unlabelled";
-    year?: number; month?: number; day?: number;
-  }>;
-  currency?: {
-    denomination: 10 | 20 | 50 | 100 | 200 | 500 | null;
-    visible_cues: string[];             // e.g. numeral, colour, portrait position
-  };
+  answer: string;                       // clear, concise answer (required, non-empty, ≤ 2000 chars)
+  details: string | null;               // additional visual details
+  uncertainty: string | null;           // what is unclear, blurry or hidden
+  printed_text: string | null;          // legible text read from the photo
+  printed_instructions: string | null;  // visible printed instructions, copied as written
 }
 ```
 
-The server returns the validated `AskResult` plus deterministic fields it
-computes itself (e.g. `expiry_status`), never raw model text.
+All five fields are required in the Gemini response schema; the optional ones
+are nullable (`type: ["string", "null"]`, the documented form). The success reply
+is this object itself; failures are `{ "error": { "code", "message", "retryable" } }`.
+
+The richer schema proposed earlier (`intent`, `confidence`, `needs_retake`,
+`date_candidates`, `currency`, …) is **not** implemented yet. Milestone 6 adds
+only the task-specific blocks it needs (expiry date candidates, currency) and the
+deterministic logic that consumes them. Model confidence is not used for
+anything in Milestone 5.
 
 ## Deterministic application logic
 
@@ -285,41 +303,53 @@ Kept out of the LLM, implemented as pure, unit-tested TypeScript:
 
 ## Errors, quota and retries
 
-- No automatic retry on HTTP 429 / `RESOURCE_EXHAUSTED`: tell the user, honour
-  `Retry-After`, keep the Ask button available after the wait.
-- At most one automatic retry for a transient network error or 5xx, with
-  backoff; never loop.
+- **No automatic retries anywhere** (the SDK's are switched off and the browser
+  never repeats a request): a failed question shows a clear message and the user
+  chooses *Try again*, which is offered only when trying again could help
+  (quota, timeout, unavailable, unusable model output, network). `Retry-After`
+  is shown when the server provides it.
 - Each failure has a plain-language message and a recovery action (retake,
   retype, try again later). Camera stays as the user left it; nothing leaks.
 - Quotas apply per Google Cloud project and are not guaranteed; the app's own
   rate limits protect the shared quota.
 
-## Ask-flow states (Milestone 4)
+## Ask-flow states
 
 Implemented as a pure reducer in `src/lib/ask/ask-flow.ts` (unit-tested), which
 rejects invalid transitions by returning the same state object. Stored phases:
-`idle`, `capturing`, `image-captured`, `listening`, `question-ready`,
-`ready-to-submit`; the UI also shows `camera-active` (idle + live camera).
+`idle`, `capturing`, `image-captured`, `listening`, `question-ready`, `sending`,
+`answered`, `send-failed`; the UI also shows `camera-active` (idle + live
+camera). Milestone 4's local "ready to submit" state became `sending`.
 
 ```text
 idle/camera-active ─Capture→ capturing ─ok→ image-captured ⇄ question-ready
                                 │fail→ idle           │  ↑ typing / transcript
                                                      ▼  │
                           listening ⇄ (start/stop speaking)
-question-ready ─Ask→ ready-to-submit ─Edit→ question-ready
-Retake: any image state → idle (question kept)     Cancel: anything → idle (all cleared)
+question-ready ─Ask→ sending ─ok→ answered ─Ask another→ image-captured (question cleared)
+                        │fail→ send-failed ─Try again→ sending
+                                         └─Edit question→ question-ready
+Retake: any image state → idle (question kept, except after an answer)
+Cancel: anything → idle (photo, question, answer cleared; a request in flight is aborted)
 ```
 
 Guards: Capture needs a live camera and no image; Ask needs an image and a
-non-blank question and is rejected while listening or already prepared
-(duplicate-submission prevention); typing and speaking need an image. In
-Milestone 4 `ready-to-submit` is a local state that only prepares
-`{image blob, question, lang}` in memory and sends nothing; Milestone 5 turns it
-into the `/api/ask` request (adding `sending` / `answering`). Phase changes are
-announced through a polite live region; focus moves to the photo heading after
-capture, the "Request ready" heading after Ask, and the primary button after
-Retake/Cancel. Leaving or hiding the page aborts listening and releases devices
-(camera and microphone hooks), and `pagehide` also discards the photo.
+non-blank question and is rejected while sending, answered or failed (duplicate
+submission prevention, also enforced by a ref in the hook for same-tick double
+activation); Try again exists only after a failure.
+
+**Requests and stale replies** (`useAsk` + `src/lib/ask/client.ts`): each request
+gets an id and an `AbortController`. Cancel, Retake, `pagehide`, unmount and a
+newer request invalidate the id and abort the fetch; a reply for a stale id is
+ignored, so an old answer can never overwrite a newer state. The browser times
+out after 45 s (the server's own Gemini timeout is 30 s) and never retries
+automatically. The server's reply is re-validated in the browser.
+
+Phase changes are announced through a polite live region (including the answer
+text); focus moves to the photo heading after capture, the answer or error
+heading after a result, and the primary button after Retake/Cancel. Leaving or
+hiding the page aborts listening (and `pagehide` also aborts the request and
+discards the photo and answer).
 
 ## Failure handling checklist
 

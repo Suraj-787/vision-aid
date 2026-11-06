@@ -10,7 +10,7 @@ type AskController = ReturnType<typeof useAsk>;
 /** Typed question (always available) plus optional browser speech input. */
 export function QuestionInput({ ask }: { ask: AskController }) {
   const listening = ask.phase === "listening";
-  const locked = listening || ask.phase === "ready-to-submit";
+  const locked = listening;
 
   return (
     <section aria-labelledby="question-heading" className="space-y-3">

@@ -47,18 +47,19 @@ Follow these instructions strictly.
 ## Tap-to-Ask request rules
 
 - Intended flow: camera preview → capture one image → speak or type a question
-  → process image and question together → display and speak the answer.
+  → process image and question together → display the answer (speaking it is planned, not built).
 - One Gemini multimodal request per user question (image + question), using
   `models.generateContent` as the planned initial integration; model ID from
   `GEMINI_MODEL`. No separate LLM calls for intent detection, OCR or routing.
 - Validate request size, content type, image format and question length on the
   server; apply rate limits and an in-flight guard.
 - Use the model's structured output; validate every response against the schema
-  on the server before sending anything to the client. Invalid output becomes a
-  generic retake message.
+  on the server before sending anything to the client (and again in the browser).
+  Invalid output becomes a controlled error, never raw model text.
 - Do not blindly trust model confidence; downgrade it when evidence is missing.
-- Handle HTTP 429 / quota exhaustion gracefully; no indefinite or automatic
-  retries on 429; at most one retry for transient failures.
+- Handle HTTP 429 / quota exhaustion gracefully. **No automatic retries of any
+  kind** (the SDK's are disabled with `retryOptions.attempts = 1` and the browser
+  never repeats a request): the user chooses Try again.
 - Keep answers short and speakable.
 
 ## Deterministic logic (never delegated to the LLM)

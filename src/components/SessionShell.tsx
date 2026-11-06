@@ -32,9 +32,10 @@ const MIC_DEVICE_VALUE: Record<MicrophoneStatus, string> = {
 };
 
 /**
- * Tap-to-Ask, frontend only (Milestone 4): the camera preview (Milestone 1) feeds
- * one captured still; the question is spoken (browser speech recognition) or
- * typed; "Ask" prepares the request locally. Nothing is sent to any service.
+ * Tap-to-Ask: the camera preview (Milestone 1) feeds one captured still; the
+ * question is spoken (browser speech recognition) or typed; tapping Ask sends
+ * that photo and question to /api/ask (Milestone 5), which asks Gemini and
+ * returns the answer. Nothing is sent before Ask.
  *
  * The Milestone 2 microphone test (PCM16) is kept as an optional diagnostic and
  * is stopped automatically when speech input starts, so the two never compete
@@ -54,6 +55,7 @@ export function SessionShell() {
   });
 
   const listening = ask.phase === "listening";
+  const aiValue = ask.phase === "sending" ? "Sending to Gemini…" : "Used only when you tap Ask";
   const micValue = listening
     ? "On (listening for your question)"
     : MIC_DEVICE_VALUE[microphone.status];
@@ -93,7 +95,7 @@ export function SessionShell() {
         {[
           { name: "Camera", value: CAMERA_DEVICE_VALUE[camera.status] },
           { name: "Microphone", value: micValue },
-          { name: "AI connection", value: "Not connected" },
+          { name: "AI service", value: aiValue },
         ].map(({ name, value }) => (
           <div
             key={name}

@@ -24,16 +24,16 @@ export default function Home() {
             What it is
           </h2>
           <p>
-            VisionAid is an accessibility assistant for blind and low-vision
-            people. When it is finished, you will start the camera, take one
-            photo, and ask a question about it by speaking or typing, such as
-            &ldquo;What does this label say?&rdquo;. VisionAid will show and
-            speak an answer about that photo only.
+            VisionAid is an experimental accessibility assistant for blind and
+            low-vision people. Start the camera, take one photo, and ask a
+            question about it by speaking or typing, such as &ldquo;What does
+            this label say?&rdquo;. VisionAid shows an answer about that photo
+            only. It can be wrong, so it says when it is unsure.
           </p>
           <p>
-            It is planned to describe scenes, read text and labels, identify
-            Indian banknotes and check expiry dates. It will say when it is
-            unsure and will not judge safety or give medical advice.
+            It will not judge whether anything is safe, and it does not give
+            medical advice. Spoken answers and dedicated tools for expiry
+            dates, banknotes and medicine labels are planned for later.
           </p>
         </section>
 
@@ -44,10 +44,9 @@ export default function Home() {
 
       <footer className="border-t border-border">
         <div className="mx-auto w-full max-w-3xl px-4 py-5 text-sm text-muted sm:px-6">
-          Early build: you can capture a photo and prepare a question on your
-          device, but asking the AI is not available yet. Photos and typed
-          questions are not sent anywhere. Speech input uses your browser&apos;s
-          speech service.
+          Early experimental build. Tapping Ask sends your photo and question to
+          Google&apos;s Gemini service to get an answer; nothing is sent
+          before that. Speech input uses your browser&apos;s speech service.
         </div>
       </footer>
     </>

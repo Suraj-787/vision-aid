@@ -1,14 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useReducer,
-  useRef,
-  useState,
-  type RefObject,
-} from "react";
+import { useCallback, useEffect, useReducer, useRef, useState, type RefObject } from "react";
 import { useSpeechInput } from "@/hooks/useSpeechInput";
 import {
   askBlockedReason,
@@ -18,9 +10,12 @@ import {
   canEditQuestion,
   canListen,
   canRetake,
+  canRetry,
   deriveAskPhase,
   INITIAL_ASK_CONTEXT,
 } from "@/lib/ask/ask-flow";
+import { postAsk, type AskFailure } from "@/lib/ask/client";
+import type { AskResult } from "@/lib/ask/ask-result";
 import { devLog } from "@/lib/dev-log";
 import { captureStill, toCaptureError, type CapturedImage } from "@/lib/image/capture";
 import { describeQuality } from "@/lib/image/quality";
@@ -34,25 +29,22 @@ interface UseAskOptions {
   onBeforeListen?: () => void;
 }
 
-/** What Milestone 5 will send. Built locally; nothing is transmitted in Milestone 4. */
-export interface PreparedRequest {
-  image: Blob;
-  width: number;
-  height: number;
-  question: string;
-  lang: SupportedLang;
-}
-
 /**
  * Coordinates the Tap-to-Ask interaction: reuses the camera preview (via
- * `videoRef`), captures one still, collects a spoken or typed question and
- * holds the prepared request locally. Images, audio and transcripts exist only
- * in memory and are discarded on Retake, Cancel, page hide and unmount.
+ * `videoRef`), captures one still, collects a spoken or typed question, and on
+ * Ask sends the already-captured photo and question to /api/ask (one request,
+ * no automatic retry). Photo, question, answer and any error exist only in
+ * memory and are discarded on Retake, Cancel, leaving the page and unmount.
+ *
+ * Responses are guarded by a request id: a reply that arrives after Cancel,
+ * Retake, a newer request or unmount is ignored, and the fetch is aborted.
  */
 export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions) {
   const [flow, dispatch] = useReducer(askReducer, INITIAL_ASK_CONTEXT);
   const [image, setImage] = useState<CapturedImage | null>(null);
   const [captureError, setCaptureError] = useState<string | null>(null);
+  const [result, setResult] = useState<AskResult | null>(null);
+  const [sendError, setSendError] = useState<AskFailure | null>(null);
   const [lang, setLang] = useState<SupportedLang>("en-IN");
   const [announcement, setAnnouncement] = useState("");
 
@@ -63,6 +55,10 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
   const capturingRef = useRef(false);
   // Bumped on retake/cancel/unmount so an in-flight capture can tell it is stale.
   const generationRef = useRef(0);
+  // Same idea for the network request, plus its AbortController.
+  const requestIdRef = useRef(0);
+  const requestAbortRef = useRef<AbortController | null>(null);
+  const requestInFlightRef = useRef(false);
 
   const phase = deriveAskPhase(flow, cameraActive);
 
@@ -79,6 +75,19 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
     releaseImage();
     setImage(null);
   }, [releaseImage]);
+
+  /** Aborts any request and invalidates its reply. No state change; safe in cleanup. */
+  const abortRequest = useCallback(() => {
+    requestIdRef.current += 1;
+    requestAbortRef.current?.abort();
+    requestAbortRef.current = null;
+    requestInFlightRef.current = false;
+  }, []);
+
+  const clearAnswer = useCallback(() => {
+    setResult(null);
+    setSendError(null);
+  }, []);
 
   const capture = useCallback(async () => {
     const video = videoRef.current;
@@ -125,6 +134,8 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
     if (!canRetake(flow)) return;
     abortSpeech();
     clearSpeechError();
+    abortRequest();
+    clearAnswer();
     generationRef.current += 1;
     capturingRef.current = false;
     discardImage();
@@ -135,18 +146,20 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
         ? "Photo discarded. The camera preview is showing. Tap Capture photo."
         : "Photo discarded. Start the camera to take a new photo.",
     );
-  }, [flow, cameraActive, abortSpeech, clearSpeechError, discardImage, announce]);
+  }, [flow, cameraActive, abortSpeech, clearSpeechError, abortRequest, clearAnswer, discardImage, announce]);
 
   const cancel = useCallback(() => {
     abortSpeech();
     clearSpeechError();
+    abortRequest();
+    clearAnswer();
     generationRef.current += 1;
     capturingRef.current = false;
     discardImage();
     setCaptureError(null);
     dispatch({ type: "CANCEL" });
-    announce("Cancelled. The photo and question were discarded.");
-  }, [abortSpeech, clearSpeechError, discardImage, announce]);
+    announce("Cancelled. The photo, question and answer were discarded.");
+  }, [abortSpeech, clearSpeechError, abortRequest, clearAnswer, discardImage, announce]);
 
   const setQuestion = useCallback((text: string) => {
     dispatch({ type: "QUESTION_CHANGED", text });
@@ -177,21 +190,69 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
     dispatch({ type: "LISTEN_ENDED" });
   }, [abortSpeech]);
 
-  const ask = useCallback(() => {
-    if (!canAsk(flow) || !imageRef.current) return;
-    dispatch({ type: "ASK" });
-    announce(
-      "Your photo and question are ready. Nothing has been sent, because asking the AI is not available in this version.",
-    );
-    devLog("ask", "request prepared locally (not sent)");
-  }, [flow, announce]);
+  /**
+   * Sends the captured photo and the question. Only ever called from the Ask or
+   * Retry button. The ref check makes a double activation in the same tick a
+   * no-op even before React re-renders; the reducer rejects it afterwards.
+   */
+  const submit = useCallback(
+    (kind: "ask" | "retry") => {
+      if (requestInFlightRef.current) return;
+      const captured = imageRef.current;
+      if (!captured || !(kind === "ask" ? canAsk(flow) : canRetry(flow))) return;
 
+      requestInFlightRef.current = true;
+      const id = ++requestIdRef.current;
+      const controller = new AbortController();
+      requestAbortRef.current = controller;
+      clearAnswer();
+      dispatch({ type: kind === "ask" ? "ASK" : "RETRY" });
+      announce("Sending your photo and question to Google's Gemini service. Please wait.");
+      devLog("ask", `request started (${kind})`);
+
+      void postAsk({
+        image: captured.blob,
+        question: flow.question.trim(),
+        signal: controller.signal,
+      }).then((outcome) => {
+        // Cancelled, retaken, replaced by a newer request, or unmounted: ignore.
+        if (id !== requestIdRef.current) return;
+        requestInFlightRef.current = false;
+        requestAbortRef.current = null;
+        if (outcome.ok) {
+          devLog("ask", "answer received");
+          setResult(outcome.result);
+          dispatch({ type: "SEND_SUCCEEDED" });
+          announce(`Answer: ${outcome.result.answer}`);
+        } else {
+          devLog("ask", `request failed: ${outcome.error.code}`);
+          setSendError(outcome.error);
+          dispatch({ type: "SEND_FAILED" });
+          announce(`There was a problem. ${outcome.error.message}`);
+        }
+      });
+    },
+    [flow, announce, clearAnswer],
+  );
+
+  const ask = useCallback(() => submit("ask"), [submit]);
+  const retry = useCallback(() => submit("retry"), [submit]);
+
+  /** After a failure: go back to editing the question (the photo is kept). */
   const edit = useCallback(() => {
+    setSendError(null);
     dispatch({ type: "EDIT" });
     announce("Editing your question.");
   }, [announce]);
 
-  // Leaving or hiding the page: stop listening; leaving also drops the image.
+  /** After an answer: same photo, new question. */
+  const askAnother = useCallback(() => {
+    clearAnswer();
+    dispatch({ type: "ASK_ANOTHER" });
+    announce("Ready for another question about the same photo. Type or say it, then tap Ask.");
+  }, [clearAnswer, announce]);
+
+  // Leaving or hiding the page: stop listening; leaving also drops everything.
   useEffect(() => {
     const onHidden = () => {
       if (document.visibilityState !== "hidden") return;
@@ -200,10 +261,13 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
     };
     const onPageHide = () => {
       abortSpeech();
+      abortRequest();
       generationRef.current += 1;
       capturingRef.current = false;
       releaseImage();
       setImage(null);
+      setResult(null);
+      setSendError(null);
       dispatch({ type: "CANCEL" });
     };
     document.addEventListener("visibilitychange", onHidden);
@@ -211,25 +275,12 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
     return () => {
       document.removeEventListener("visibilitychange", onHidden);
       window.removeEventListener("pagehide", onPageHide);
-      // Unmount: invalidate any in-flight capture and free the preview URL.
+      // Unmount: abort the request, invalidate captures and free the preview URL.
+      abortRequest();
       generationRef.current += 1;
       releaseImage();
     };
-  }, [abortSpeech, releaseImage]);
-
-  const prepared = useMemo<PreparedRequest | null>(
-    () =>
-      phase === "ready-to-submit" && image
-        ? {
-            image: image.blob,
-            width: image.width,
-            height: image.height,
-            question: flow.question.trim(),
-            lang,
-          }
-        : null,
-    [phase, image, flow.question, lang],
-  );
+  }, [abortSpeech, abortRequest, releaseImage]);
 
   return {
     phase,
@@ -239,7 +290,8 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
     setLang,
     captureError,
     announcement,
-    prepared,
+    result,
+    sendError,
     speech: {
       supported: speech.supported,
       error: speech.error,
@@ -250,6 +302,7 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
       editQuestion: canEditQuestion(flow),
       listen: canListen(flow) && speech.supported,
       ask: canAsk(flow),
+      retry: canRetry(flow),
     },
     askBlockedReason: askBlockedReason(flow),
     capture,
@@ -260,6 +313,8 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen }: UseAskOptions
     stopListening,
     abortListening,
     ask,
+    retry,
     edit,
+    askAnother,
   };
 }
