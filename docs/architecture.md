@@ -263,7 +263,7 @@ until Gemini answered (up to the 30 s timeout), so Cancel followed by Ask could 
 refused as "already in progress". Whether Google still counts an abandoned request
 against quota is not known; there are no retries either way.
 
-**Known deployment limits (unchanged, document before deploying):** the rate
+**Known deployment limits (see also `docs/deployment.md`, which covers Vercel specifically):** the rate
 limiter and the one-at-a-time guard are in memory, per server process (a serverless
 host runs several processes, each with its own counters); the client key comes from
 `X-Forwarded-For`/`X-Real-IP`, which only a trusted proxy makes reliable, and falls

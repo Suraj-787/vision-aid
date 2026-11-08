@@ -212,6 +212,16 @@ settings), failures and recovery. Validation record: `docs/milestone-10-validati
 **Not done:** any test on a real phone, with real speech recognition, TalkBack or VoiceOver (no device or simulator was available):
 every such case is marked NOT TESTED.
 
+## Milestone 11 — Production deployment readiness (Vercel) ✅ prepared 2026-11-08; **not deployed**
+
+Audit of Vercel compatibility against the current official documentation, plus the minimum changes it justified: the Node version is pinned to
+22.x (Vercel's default is now 26.x, which the app has never run on) and `/api/ask` declares `maxDuration = 60` (above the 30 s Gemini timeout, below every
+plan's limit). No `vercel.json`, no new dependency, no new feature. A clean-checkout simulation (no `.env`, `npm ci`, build, start with variables supplied only
+through the process environment) found and fixed one real build failure (a type error in a new test file). Guide: `docs/deployment.md`.
+
+**Not done:** deployment itself, a real Gemini call from Vercel, the WAF rate-limit rule, request cancellation on Vercel (opt-in, pattern unverified),
+and all real-device checks.
+
 ## Optional future extension — Gemini Live Mode
 - Continuous voice conversation using the existing ephemeral-token endpoint and
   PCM16 pipeline.

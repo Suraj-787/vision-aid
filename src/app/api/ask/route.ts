@@ -12,6 +12,14 @@ import { SlidingWindowLimiter } from "@/lib/server/rate-limit";
  * stored, cached or logged. Independent of Live Mode (ENABLE_LIVE_MODE).
  */
 
+/**
+ * Maximum run time for this function on hosts that read it from the Next.js build output (Vercel does).
+ * The Gemini call has its own 30 s timeout (DEFAULT_GEMINI_TIMEOUT_MS), so 60 s leaves room for validation and
+ * post-processing while still stopping a stuck request, which also bounds what one request can cost. Keep it above
+ * the Gemini timeout (a unit test enforces this) and within the host plan's limit.
+ */
+export const maxDuration = 60;
+
 // In-memory limits (per server process, like /api/live-token): 20 questions per
 // 10 minutes per client and 120 per hour overall, to protect the shared quota.
 const deps: AskDeps = {
