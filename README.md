@@ -38,7 +38,7 @@ Two ways to use it, chosen in *Accessibility settings*: **Screen reader** (defau
 VoiceOver; VisionAid does not speak by itself, announces changes, and moves focus predictably) or
 **Voice guided** (VisionAid speaks short prompts, and can read answers aloud automatically if you turn that
 on). An optional **Say a command** button hears one English command per tap (capture photo, retake photo,
-start speaking, repeat answer, ask); "ask" only moves to the Ask button, you always send by activating it.
+start speaking, repeat answer, ask, done); "done" ends the conversation and returns to taking a photo, and "ask" moves to the Ask button, or, if you turn on **Ask by voice** in the settings (off by default), sends your photo and question to Gemini straight away.
 See `docs/accessibility.md`. This has been tested with automated browser tests only, **not yet with a real
 screen reader or blind users**.
 
@@ -77,6 +77,7 @@ What to expect, honestly:
 | 5 Gemini image understanding | ✅ | `POST /api/ask` -> one Gemini request -> validated answer shown as text |
 | 6 Structured processing and deterministic tools | ✅ built, awaiting review | Intent, confidence, expiry check, banknote gating, safety guards |
 | 7 Voice interaction and languages | ✅ built, awaiting review | Listen/Pause/Stop, en / hi / kn selector, `response_language`, multilingual print rules; physical-device tests still to do; Sarvam not integrated |
+| 10 Voice interaction consolidation | ✅ built, awaiting review | One step × command table with a reason for every refusal, Done cancels in-flight requests, question intent removed from server logs, integrated end-to-end suites. Record: `docs/milestone-10-validation.md`. **Real-device testing NOT DONE** |
 | 9 Blind accessibility and audio-first experience | ✅ built, awaiting review | Screen-reader-first announcements and focus, optional Voice-guided mode, optional voice commands, accessibility settings. **Not yet tested with TalkBack, VoiceOver or blind users** |
 | 8 Final validation and production readiness | ✅ built, awaiting review | Audit + fixes: sharper photos, Cancel frees the server slot, security headers, browser/a11y test scripts. **Physical-device testing still to do** |
 
@@ -155,7 +156,7 @@ All are server-only; see `.env.example`. Never use `NEXT_PUBLIC_*` for keys.
 - VisionAid stores no photos, audio, questions, answers or transcripts (no database,
   files or cookies); images, audio, questions, answers, keys and tokens are never
   logged. The one thing kept in the browser's `localStorage` is a small object with your
-  three accessibility settings (see below), only after you change one.
+  four accessibility settings (see below), only after you change one.
 - **Free tier:** Google's pricing page says Free-tier content is used to improve
   its products. Do not send personal, medical, financial or bystander
   information while testing on the free tier; use staged scenes and consenting

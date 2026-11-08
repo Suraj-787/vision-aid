@@ -15,9 +15,13 @@ export function VoiceBar({ ask, prefs }: { ask: AskController; prefs: A11yPrefs 
   const voiceGuided = prefs.mode === "voice-guided";
   const { commands } = ask;
   const showCommands = commands.enabled;
-  if (!voiceGuided && !showCommands) return null;
+  // Voice commands were turned on but this browser has no speech recognition: say so instead of showing nothing.
+  const commandsUnsupported = prefs.voiceCommands && !ask.speech.supported;
+  if (!voiceGuided && !showCommands && !commandsUnsupported) return null;
 
   const busySpeaking = ask.output.speaking;
+  // The question step shows recognition errors itself; show them here everywhere else.
+  const questionStep = ask.phase === "image-captured" || ask.phase === "question-ready" || ask.phase === "listening";
 
   return (
     <div role="group" aria-label="Voice controls" className="card space-y-3 p-[min(1rem,4vw)]">
@@ -33,12 +37,7 @@ export function VoiceBar({ ask, prefs }: { ask: AskController; prefs: A11yPrefs 
               Stop listening
             </ActionButton>
           ) : (
-            <ActionButton
-              icon="mic"
-              onClick={commands.start}
-              disabled={busySpeaking}
-              onBlockedClick={() => ask.notify("Wait for VisionAid to finish speaking, or stop its voice first.")}
-            >
+            <ActionButton icon="mic" onClick={commands.start}>
               Say a command
             </ActionButton>
           ))}
@@ -54,11 +53,35 @@ export function VoiceBar({ ask, prefs }: { ask: AskController; prefs: A11yPrefs 
         </p>
       )}
 
+      {showCommands && commands.message && (
+        <p aria-hidden="true" className="callout callout-info text-caption">
+          {commands.message}
+        </p>
+      )}
+
+      {showCommands && ask.speech.error && !questionStep && (
+        <div role="alert" className="callout callout-danger text-caption">
+          <Icon name="triangle-alert" className="mt-0.5" />
+          <p>{ask.speech.error.message}</p>
+        </div>
+      )}
+
       {showCommands && (
         <p className="text-caption text-muted">
-          Say one of: capture photo, retake photo, start speaking, repeat answer, ask. English only. &ldquo;Ask&rdquo;
-          only moves to the Ask button; you send by activating it.
+          Say one of: capture photo, retake photo, start speaking, repeat answer, ask, done. &ldquo;Done&rdquo; ends this question and clears the photo and answer so you can start again. English only. {prefs.voiceAsk
+            ? " “Ask” sends your photo and question to Google Gemini straight away."
+            : " “Ask” only moves to the Ask button; you send by activating it."}
         </p>
+      )}
+
+      {commandsUnsupported && (
+        <div role="status" className="callout callout-warning text-caption">
+          <Icon name="info" className="mt-0.5" />
+          <p>
+            Voice commands need speech recognition, which this browser does not provide. You can type your question and
+            use the buttons instead.
+          </p>
+        </div>
       )}
 
       {voiceGuided && !ask.output.supported && (

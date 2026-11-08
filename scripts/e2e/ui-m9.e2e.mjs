@@ -72,7 +72,7 @@ function installMocks(cfg) {
       speak(u) { tts.log.push({ text: u.text, lang: u.lang, voice: u.voice && u.voice.name }); tts.queue.push(u); window.__seq.push("speak"); },
       cancel() { tts.cancels++; window.__seq.push("cancel"); const cur = tts.queue[0]; tts.queue = []; tts.paused = false; if (cur) setTimeout(() => cur.onerror?.({ error: "canceled" }), 0); },
       pause() { tts.paused = true; }, resume() { tts.paused = false; },
-      get paused() { return tts.paused; }, get speaking() { return tts.queue.length > 0; },
+      get paused() { return tts.paused; }, get speaking() { return tts.queue.length > 0; }, get pending() { return false; },
       addEventListener() {}, removeEventListener() {},
     };
     Object.defineProperty(window, "speechSynthesis", { value: synth, configurable: true });
@@ -228,7 +228,7 @@ await scenario("5. Voice-guided mode: chosen by the person, remembered, never sp
   must((await a.tts()).log[0].lang === "en-IN" && (await a.tts()).log[0].voice === "Veena", "in English, with the English voice");
   const st = await a.store();
   must(Object.keys(st).join() === "visionaid.accessibility.v1" && JSON.parse(st["visionaid.accessibility.v1"]).mode === "voice-guided", "only the preference object is stored", JSON.stringify(st));
-  must(Object.keys(JSON.parse(st["visionaid.accessibility.v1"])).sort().join() === "autoReadAnswers,mode,voiceCommands", "…and only its three fields, no content");
+  must(Object.keys(JSON.parse(st["visionaid.accessibility.v1"])).sort().join() === "autoReadAnswers,mode,voiceAsk,voiceCommands", "…and only its four fields, no content");
   await a.page.reload({ waitUntil: "networkidle0" }); await sleep(400);
   must((await a.tts()).log.length === 0, "after a reload the mode is remembered but nothing is spoken (no speech without a user action)");
   must(/Now: Voice guided/.test(await a.page.evaluate(() => document.querySelector("#a11y-heading").textContent)), "the remembered mode is shown");
@@ -348,7 +348,7 @@ await scenario("13. Voice commands: explicit, one per tap, English, restricted b
   must(await a.has("Stop listening"), "an immediate Stop listening is offered");
   must((await a.live()) === "Listening for a command.", "start is announced", await a.live());
   await a.page.evaluate(() => window.__rec.say("retake photo")); await sleep(300);
-  must(/Retake photo is available after you take a photo/.test(await a.live()), "a command that does not fit the step is explained, not run", await a.live());
+  must(/Retake photo needs a photo first/.test(await a.live()), "a command that does not fit the step is explained, not run", await a.live());
   must(await a.has("Say a command") && !(await a.has("Stop listening")), "listening ended after one command");
   await a.click("Start camera"); await a.wait("Capture photo"); await sleep(400);
   await a.click("Say a command"); await sleep(100);
@@ -362,7 +362,11 @@ await scenario("13. Voice commands: explicit, one per tap, English, restricted b
   must(/Ask sends your photo and question to Google Gemini/.test(await a.live()), "and says what Ask does", await a.live());
   await a.click("Say a command"); await sleep(100);
   await a.page.evaluate(() => window.__rec.say("send my photo to the doctor")); await sleep(300);
-  must(/Command not recognised\. You can say: retake photo, start speaking, ask\./.test(await a.live()), "other speech is not treated as a command; only the commands that work now are listed", await a.live());
+  must(/I heard .send my photo to the doctor.\. Command not recognised\. You can say: retake photo, start speaking, ask, done\./.test(await a.live()), "other speech is not treated as a command; what was heard and only the commands that work now are given", await a.live());
+  must(/I heard .send my photo to the doctor./.test(await a.text()), "the same message is visible on screen (not only announced)");
+  await a.click("Say a command"); await sleep(100);
+  await a.page.evaluate(() => window.__rec.silence()); await sleep(300);
+  must(/I did not hear a command\. Tap Say a command and try again\./.test(await a.live()) && /I did not hear a command/.test(await a.text()), "silence is explained, on screen and by announcement");
   must(a.calls.length === 0, "still nothing sent");
   await a.click("Ask"); await a.page.waitForSelector("#answer-heading"); await sleep(200);
   await a.click("Say a command"); await sleep(100);
@@ -381,12 +385,15 @@ await scenario("14. Command listening is stopped by Stop listening, page hide an
   r = await a.rec();
   must(r.aborts === 2 && (await a.has("Say a command")), "hiding the page stops command listening", JSON.stringify(r));
   await a.page.evaluate(() => { Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true }); document.dispatchEvent(new Event("visibilitychange")); });
-  // while VisionAid is speaking, the command button is inactive and explains why
+  // while VisionAid is speaking, the button is NOT blocked: the tap interrupts the speech, then listens (never both)
   await a.chooseMode("screen-reader"); await a.chooseMode("voice-guided"); await sleep(150);
-  must(await a.disabled("Say a command"), "Say a command is inactive while VisionAid speaks (recognition and speech never overlap)");
-  await a.click("Say a command"); await sleep(100);
-  must(/Wait for VisionAid to finish speaking/.test(await a.live()), "pressing it anyway explains", await a.live());
-  must((await a.rec()).starts.length === 2, "no recognition started", String((await a.rec()).starts.length));
+  must((await a.tts()).queue === 1, "a prompt is playing");
+  must(!(await a.disabled("Say a command")), "Say a command stays available while VisionAid speaks");
+  await a.page.evaluate(() => { window.__seq.length = 0; });
+  await a.click("Say a command"); await sleep(150);
+  const seq = await a.seq();
+  must((await a.tts()).queue === 0 && seq.indexOf("cancel") !== -1 && seq.indexOf("cancel") < seq.indexOf("rec.start"), "the tap stops the speech first, then starts listening: they never overlap", seq.join(","));
+  must((await a.rec()).starts.length === 3 && await a.has("Stop listening"), "listening for the command started");
 });
 
 await scenario("15. Unsupported browsers: the default experience still works; settings are honest", { synth: false, recog: false, seedPrefs: { mode: "voice-guided", autoReadAnswers: true, voiceCommands: true } }, () => ok(), async (a) => {
@@ -408,13 +415,141 @@ await scenario("16. Settings are labelled, keyboard operable, and explain each c
   });
   must(info.legend === "How should VisionAid talk to you?", "the choice is a labelled group", info.legend);
   must(info.radios.length === 2 && info.radios[0].checked && info.radios.every((r) => r.described && r.h >= 44), "two options, Screen reader selected, each described, targets at least 44 px", JSON.stringify(info.radios));
-  must(info.boxes.length === 2 && info.boxes.every((b) => b.described), "each checkbox explains what it changes");
+  must(info.boxes.length === 3 && info.boxes.every((b) => b.described), "each checkbox explains what it changes");
   await a.page.focus('input[name="interaction-mode"][value="screen-reader"]');
   await a.page.keyboard.press("ArrowDown"); await sleep(200);
   must((await a.page.evaluate(() => document.querySelector('input[name="interaction-mode"]:checked').value)) === "voice-guided", "the arrow keys change the mode");
   const m = await a.srMark();
   await a.chooseMode("screen-reader"); await sleep(100);
   must((await a.srSince(m)).some((e) => /Screen reader mode is on\. VisionAid will not speak by itself\./.test(e.text)), "switching back is announced");
+});
+
+for (const mode of ["screen-reader", "voice-guided"]) {
+  await scenario(`17. Several commands in a row work in ${mode} mode (capture, retake, capture, start speaking)`, { recog: true, seedPrefs: { mode, autoReadAnswers: false, voiceCommands: true } }, () => ok(), async (a) => {
+    await a.click("Start camera"); await a.wait("Capture photo"); await sleep(600);
+    const say = async (text) => { await a.click("Say a command"); await sleep(120); await a.page.evaluate((t) => window.__rec.say(t), text); await sleep(600); };
+    await say("capture photo");
+    must(await a.has("Retake photo"), "1. capture photo");
+    await say("retake photo");
+    must(await a.has("Capture photo") && !(await a.has("Retake photo")), "2. retake photo, straight after, even while a prompt is still playing");
+    await say("take photo");
+    must(await a.has("Retake photo"), "3. a variant of capture works");
+    const before = (await a.rec()).starts.length;
+    await say("start speaking");
+    if (mode === "voice-guided") {
+      // the prompt is spoken first and listening starts when it has finished (the microphone never hears VisionAid)
+      must((await a.spoken()).includes("Listening. Speak your question."), "(voice-guided) the Listening prompt is spoken first");
+      must((await a.rec()).starts.length === before + 1, "(voice-guided) dictation has not started while the prompt plays");
+      for (let i = 0; i < 6; i++) await a.finish();
+      await sleep(300);
+    }
+    // dictation is a SECOND recognition session, started by the command: the question box is read-only and the listening text shows
+    const dictating = await a.page.evaluate(() => document.querySelector("#question-input")?.readOnly === true && document.body.innerText.includes("Listening… speak your question"));
+    must(dictating, "4. start speaking really begins dictation (the question step is listening)");
+    const r = await a.rec();
+    must(r.starts.length === before + 2, "the command listened once and then dictation started (two sessions)", JSON.stringify(r));
+    await a.page.evaluate(() => window.__rec.say("What does this say"));
+    await sleep(300);
+    must((await a.page.$eval("#question-input", (e) => e.value)) === "What does this say", "and the spoken question lands in the question box");
+    must(!(await a.text()).includes("Command not recognised"), "none was reported as not understood");
+  });
+}
+
+await scenario("18. A speech engine that loses end events does not leave the controls stuck", { seedPrefs: { mode: "voice-guided", autoReadAnswers: false, voiceCommands: false } }, () => ok(), async (a) => {
+  await a.click("Start camera"); await a.wait("Capture photo"); await sleep(500);
+  must(!(await a.disabled("Stop VisionAid voice")), "a prompt is playing");
+  await a.page.evaluate(() => { window.__tts.queue = []; }); // the engine goes quiet, but no end event is ever delivered
+  await sleep(3200);
+  must(await a.disabled("Stop VisionAid voice"), "the player noticed the engine went quiet and released the controls");
+  must(await a.page.evaluate(() => !document.body.innerText.includes("Reading the answer aloud")), "nothing claims to be speaking");
+});
+
+await scenario("19. Done ends the conversation by voice: discards locally, returns to capture, and can be repeated", { recog: true, seedPrefs: { mode: "screen-reader", autoReadAnswers: false, voiceCommands: true } }, ({ n }) => ok({ answer: "Round " + n + " answer" }), async (a) => {
+  const say = async (text) => { await a.click("Say a command"); await sleep(120); await a.page.evaluate((t) => window.__rec.say(t), text); await sleep(600); };
+  await a.click("Start camera"); await a.wait("Capture photo"); await sleep(500);
+  await say("done");
+  must(/Done is available once you have taken a photo/.test(await a.live()), "before there is a photo, done explains itself and changes nothing", await a.live());
+  must(await a.has("Capture photo"), "the camera step is untouched");
+  await say("capture photo");
+  must(await a.has("Retake photo"), "round 1: photo captured by voice");
+  await say("I am done reading the label");
+  must(await a.has("Retake photo") && /Command not recognised/.test(await a.live()), "a sentence that merely contains the word done does nothing (the whole utterance must be the command)");
+  await a.page.type("#question-input", "What is this?");
+  await a.askAndWait();
+  must((await a.page.evaluate(() => document.querySelector("#answer-heading").closest("section").innerText)).includes("Round 1 answer"), "round 1: the answer is shown");
+  const before = a.calls.length;
+  await say("done");
+  must(!(await a.page.evaluate(() => !!document.querySelector("#answer-heading"))), "done: the answer is gone");
+  must(await a.has("Capture photo") && !(await a.has("Retake photo")), "done: back to the capture step with the camera still on");
+  must(await a.page.evaluate(() => /^Camera on/.test(document.querySelector('.chip[role="status"]').textContent)), "done: the camera was not switched off");
+  must(await a.page.evaluate(() => !document.querySelector('img[alt^="The photo you captured"]')), "done: the photo is discarded");
+  must(/^Done\. The photo, question and answer were discarded on this device\./.test(await a.live()), "done is announced", await a.live());
+  must((await a.page.evaluate(() => document.activeElement?.textContent.trim())) === "Capture photo", "focus is on Capture photo, ready for the next photo");
+  must(a.calls.length === before, "done sends nothing");
+  must(JSON.stringify(Object.keys(await a.store())) === JSON.stringify(["visionaid.accessibility.v1"]), "no content was stored");
+  await say("capture photo");
+  must(await a.has("Retake photo"), "round 2: capture photo again");
+  await a.page.type("#question-input", "And this?");
+  await a.askAndWait();
+  must((await a.page.evaluate(() => document.querySelector("#answer-heading").closest("section").innerText)).includes("Round 2 answer") && a.calls.length === 2, "round 2: a new question gets its own answer");
+  must(!(await a.page.evaluate(() => document.body.innerText.includes("Round 1"))), "nothing from round 1 is left on screen");
+  await a.click("Done"); await sleep(200);
+  must(await a.has("Capture photo"), "the Done button does the same thing");
+});
+
+await scenario("20. Done also works from the failure screen and after only a photo", { recog: true, seedPrefs: { mode: "screen-reader", autoReadAnswers: false, voiceCommands: true } }, () => ({ status: 503, body: { error: { code: "UPSTREAM_UNAVAILABLE", message: "The AI service is busy right now.", retryable: true } } }), async (a) => {
+  const say = async (text) => { await a.click("Say a command"); await sleep(120); await a.page.evaluate((t) => window.__rec.say(t), text); await sleep(600); };
+  await a.setup("q"); await a.click("Ask"); await a.page.waitForSelector("#failure-heading"); await sleep(200);
+  await say("done");
+  must(await a.has("Capture photo") && !(await a.page.evaluate(() => !!document.querySelector("#failure-heading"))), "done from the failure screen returns to capture");
+  await a.click("Capture photo"); await a.wait("Retake photo");
+  await say("done");
+  must(await a.has("Capture photo") && !(await a.has("Retake photo")), "done after only a photo (no question yet) also returns to capture");
+});
+
+await scenario("21. Ask by voice (opt-in): the spoken ask sends, but only when there is a photo and a question, and never from ordinary speech", { recog: true, seedPrefs: { mode: "screen-reader", autoReadAnswers: false, voiceCommands: true, voiceAsk: true } }, ({ n }) => ok({ answer: "Voice answer " + n }), async (a) => {
+  const say = async (text) => { await a.click("Say a command"); await sleep(120); await a.page.evaluate((t) => window.__rec.say(t), text); await sleep(700); };
+  must(/Ask.{1,3} sends your photo and question to Google Gemini straight away/.test(await a.text()), "the voice bar says plainly that ask sends straight away");
+  await a.click("Start camera"); await a.wait("Capture photo"); await sleep(500);
+  await say("ask");
+  must(a.calls.length === 0 && /Ask needs a photo and a question first/.test(await a.live()), "ask before there is a photo sends nothing and says why", await a.live());
+  await a.click("Capture photo"); await a.wait("Retake photo");
+  await say("ask");
+  must(a.calls.length === 0 && /Ask needs a question first/.test(await a.live()), "ask with a photo but no question sends nothing and says a question is needed");
+  await a.page.type("#question-input", "What is this?");
+  await say("can you ask my doctor about this");
+  must(a.calls.length === 0, "ordinary speech that contains the word ask sends nothing");
+  await say("ask");
+  await a.page.waitForSelector("#answer-heading", { timeout: 8000 }); await sleep(200);
+  must(a.calls.length === 1 && a.calls[0].question === "What is this?", "ask sent the photo and the question, once");
+  must((await a.page.evaluate(() => document.querySelector("#answer-heading").closest("section").innerText)).includes("Voice answer 1"), "and the answer is shown");
+  must((await a.srSince(0)).some((e) => e.kind === "status" && /^Sending your photo and question to Google's Gemini service\. Please wait\./.test(e.text)), "the announcement says what was sent, to whom");
+  await say("ask");
+  must(a.calls.length === 1, "saying ask again with an answer showing sends nothing more");
+  await a.click("Ask another question"); await a.page.type("#question-input", "And this?");
+  await say("send it");
+  await a.page.waitForSelector("#answer-heading"); await sleep(200);
+  must(a.calls.length === 2, "send it also works");
+  must(JSON.parse((await a.store())["visionaid.accessibility.v1"]).voiceAsk === true && !/Voice answer|What is this/.test(JSON.stringify(await a.store())), "storage holds the preference only, no content");
+});
+
+await scenario("22. Ask by voice is off by default, needs voice commands, is plainly worded, and is remembered only when chosen", { recog: true }, () => ok(), async (a) => {
+  await a.openSettings();
+  const box = () => a.page.evaluate(() => { const c = document.querySelector('input[aria-describedby="voice-ask-help"]'); return { checked: c.checked, disabled: c.disabled, help: document.getElementById("voice-ask-help").textContent }; });
+  let b = await box();
+  must(!b.checked && b.disabled, "off by default, and unavailable while voice commands are off", JSON.stringify({ c: b.checked, d: b.disabled }));
+  must(/Turn on Voice commands first/.test(b.help) && /sends your photo and question to Google.s Gemini service at once/.test(b.help), "the help text says it sends to Google Gemini at once");
+  await a.page.evaluate(() => document.querySelector('input[aria-describedby="commands-help"]').click()); await sleep(150);
+  b = await box();
+  must(!b.checked && !b.disabled, "turning voice commands on makes it available, still off");
+  must(/When off, it only moves to the Ask button and you send it yourself/.test(b.help), "and explains the off behaviour");
+  const m = await a.srMark();
+  await a.page.evaluate(() => document.querySelector('input[aria-describedby="voice-ask-help"]').click()); await sleep(200);
+  must((await a.srSince(m)).some((e) => /Ask by voice is on\. Saying ask will send your photo and question to Google Gemini straight away\./.test(e.text)), "turning it on is announced with what it does");
+  must(JSON.parse((await a.store())["visionaid.accessibility.v1"]).voiceAsk === true, "the choice is saved");
+  await a.page.evaluate(() => document.querySelector('input[aria-describedby="commands-help"]').click()); await sleep(150);
+  b = await box();
+  must(b.disabled, "turning voice commands off makes ask-by-voice inactive again (it cannot send without commands)");
 });
 
 console.log(log.join("\n"));

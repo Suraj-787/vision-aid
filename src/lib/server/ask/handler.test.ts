@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { ApiError } from "@google/genai";
 import { MAX_IMAGE_BYTES, MAX_QUESTION_LENGTH } from "@/lib/ask/ask-api";
-import { parseAskResult } from "@/lib/ask/ask-result";
+import { INTENTS, parseAskResult } from "@/lib/ask/ask-result";
 import { SlidingWindowLimiter } from "@/lib/server/rate-limit";
 import { readAskConfig, type AskConfig } from "./config.ts";
 import type { GeminiClient, GeminiInput, GeminiOutput } from "./gemini.ts";
@@ -535,12 +535,12 @@ describe("Milestone 6: post-processing through the handler", () => {
     }
   });
 
-  it("logs the intent but never the answer, dates or printed text", async () => {
+  it("logs nothing derived from the question or the answer: not the intent, the answer, dates or printed text", async () => {
     const h = harness(async () => ({ text: JSON.stringify(expiryModel({ answer: "SECRETANSWER", printed_text: "SECRETPRINT" })) }), fixedNow);
     await ask(h);
     const logs = h.logs.join("\n");
-    assert.match(logs, /intent expiry_date/);
     assert.ok(!/SECRETANSWER|SECRETPRINT|08\/2027|MFG/.test(logs), logs);
+    assert.doesNotMatch(logs, /intent|expiry_date/i, "even the category of the question is private");
   });
 });
 
@@ -661,5 +661,35 @@ describe("client disconnect (Cancel / Retake) frees the server slot (Milestone 8
     const h = harness();
     await call(h, valid());
     assert.ok(h.calls[0].signal instanceof AbortSignal);
+  });
+});
+
+describe("operational logs carry no question-derived information (Milestone 10)", () => {
+  const MARKERS = ["QLOG-SECRET what does my pharmacy label say", "ALOG-SECRET-ANSWER", "PLOG-SECRET-PRINTED", "DLOG-SECRET-DETAILS", "ULOG-SECRET-UNCERTAIN"];
+
+  for (const intent of INTENTS) {
+    it(`an answered request about "${intent}" logs only timing and the photo size`, async () => {
+      const h = harness(async () => ({
+        text: JSON.stringify(modelOutput({ intent, answer: MARKERS[1], printed_text: MARKERS[2], details: MARKERS[3], uncertainty: MARKERS[4] })),
+        finishReason: "STOP",
+      }));
+      const r = await call(h, askRequest({ image: IMAGE, question: MARKERS[0], response_language: "hi-IN" }));
+      assert.equal(r.status, 200);
+      const logs = h.logs.join("\n");
+      for (const marker of MARKERS) assert.ok(!logs.includes(marker), `${marker} appeared in the logs`);
+      for (const other of INTENTS) assert.ok(!logs.includes(other), `intent name ${other} appeared in the logs`);
+      assert.doesNotMatch(logs, /hi-IN|response_language|intent/i);
+      assert.match(logs, /\[ask\] answered in \d+ ms \(image \d+ KB\)/, "the non-sensitive diagnostic is kept");
+    });
+  }
+
+  it("failures log only fixed codes, never the question", async () => {
+    const h = harness(async () => {
+      throw new ApiError({ message: JSON.stringify({ error: { status: "UNAVAILABLE", message: MARKERS[0] } }), status: 503 });
+    });
+    await call(h, askRequest({ image: IMAGE, question: MARKERS[0] }));
+    const logs = h.logs.join("\n");
+    assert.ok(!logs.includes("QLOG-SECRET"), logs);
+    assert.match(logs, /upstream error/);
   });
 });

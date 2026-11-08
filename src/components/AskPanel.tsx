@@ -46,6 +46,7 @@ export function AskPanel({ ask, cameraStatus, onStartCamera, onStopCamera, previ
   useEffect(() => {
     if (focusRequest.target === "question") document.getElementById("question-heading")?.focus();
     else if (focusRequest.target === "ask") askButtonRef.current?.focus();
+    else if (focusRequest.target === "primary") requestAnimationFrame(() => primaryRef.current?.focus());
   }, [focusRequest]);
 
   const answered = ask.phase === "answered" && ask.result !== null;

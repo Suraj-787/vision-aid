@@ -193,7 +193,7 @@ status messages ("Paused.", "Stopped reading.") and never repeat the answer; the
 live region is cleared before playback so a repeated message is announced again.
 
 **Languages.** `en-IN`, `hi-IN`, `kn-IN` (`lib/speech/types.ts`). One selector
-(`components/LanguageSelector.tsx`; the language is not remembered, unlike the three accessibility settings) sets (1) the
+(`components/LanguageSelector.tsx`; the language is not remembered, unlike the four accessibility settings) sets (1) the
 `lang` of speech recognition, (2) `response_language` sent with the question
 (`docs/ask-api.md`), (3) which voice availability message is shown. Reading a
 reply picks voices from the reply's own script, not from the selector, so an

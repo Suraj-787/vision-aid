@@ -193,12 +193,24 @@ re-announce rule, a predictable focus map, answer announced as ready but never r
 buttons that explain themselves, the recognised question read back, camera region described, status symbols
 hidden from screen readers, step headings); an optional **Voice-guided** mode (short prompts in en/hi/kn, one
 shared speech player, prompt-then-listen, optional automatic reading, Stop VisionAid voice and Escape); an
-optional one-shot **voice command** mode (English; "ask" never sends); accessibility settings with three
+optional one-shot **voice command** mode (English; "done" ends the conversation; "ask" only moves to the Ask button unless the person turns on **Ask by voice**, which sends); accessibility settings with four
 remembered choices; privacy text updated.
 
 Not done / limits: not tested with TalkBack, VoiceOver or blind users; Hindi and Kannada prompts are unreviewed
 by native speakers; commands are English only; the language is still not remembered; iOS may block
 non-gesture speech (to be confirmed). Next steps need real devices: `docs/testing-checklist.md` ("Milestone 9").
+
+## Milestone 10 — Voice interaction consolidation and release readiness ✅ (implemented 2026-11-08; awaiting review)
+
+Stabilisation only. The voice-command rules were rebuilt as one step × command table with a specific, visible and announced reason
+for every refusal (Done now also cancels a request in flight); the server log no longer includes the question's intent (regression
+tests added); the speech player ignores duplicated end events; a few silent no-ops now give feedback (voice commands on without
+speech recognition, dictation tapped while a command is being listened for); the Ask-by-voice checkbox shows its effective state;
+integrated end-to-end suites cover the full workflow in every mode combination, Done's cleanup, consent edge cases (malformed stored
+settings), failures and recovery. Validation record: `docs/milestone-10-validation.md`.
+
+**Not done:** any test on a real phone, with real speech recognition, TalkBack or VoiceOver (no device or simulator was available):
+every such case is marked NOT TESTED.
 
 ## Optional future extension — Gemini Live Mode
 - Continuous voice conversation using the existing ephemeral-token endpoint and

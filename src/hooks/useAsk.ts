@@ -23,11 +23,14 @@ import { captureStill, toCaptureError, type CapturedImage } from "@/lib/image/ca
 import { answerLanguageNotes, chooseResponseLanguage } from "@/lib/speech/answer-language";
 import { DEFAULT_LANG, type SupportedLang } from "@/lib/speech/types";
 import { answerReadyAnnouncement, photoCapturedAnnouncement, transcriptAnnouncement } from "@/lib/a11y/messages";
-import { effectiveAutoRead, isVoiceGuided, type A11yPrefs } from "@/lib/a11y/preferences";
+import { effectiveAutoRead, effectiveVoiceAsk, isVoiceGuided, type A11yPrefs } from "@/lib/a11y/preferences";
 import {
+  ASK_BY_VOICE_SENDING,
   ASK_NEEDS_CONFIRMATION,
   commandHelp,
+  commandLabel,
   commandUnavailable,
+  deriveCommandStep,
   isCommandAvailable,
   parseCommand,
   type CommandContext,
@@ -37,7 +40,7 @@ import { guidanceText, photoGuidance } from "@/lib/guidance/messages";
 /** Voice commands are English only (see lib/commands/voice-commands.ts). */
 const COMMAND_LANG: SupportedLang = "en-IN";
 
-export type FocusTarget = "question" | "ask";
+export type FocusTarget = "question" | "ask" | "primary";
 
 interface UseAskOptions {
   videoRef: RefObject<HTMLVideoElement | null>;
@@ -70,7 +73,16 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen, prefs }: UseAsk
   const [answerLang, setAnswerLang] = useState<SupportedLang>(DEFAULT_LANG);
   const [answerSelectedLang, setAnswerSelectedLang] = useState<SupportedLang>(DEFAULT_LANG);
   const { message: announcement, announce } = useAnnouncer();
-  const [commandActive, setCommandActive] = useState(false);
+  const [commandActive, setCommandActiveState] = useState(false);
+  // The same flag, readable at once: a command that ends hands over to the next action
+  // (for example dictation) before React has re-rendered, and that action must not see a stale "still listening".
+  const commandActiveRef = useRef(false);
+  const setCommandActive = useCallback((active: boolean) => {
+    commandActiveRef.current = active;
+    setCommandActiveState(active);
+  }, []);
+  // The outcome of the last voice command, shown on screen as well as announced.
+  const [commandMessage, setCommandMessage] = useState<string | null>(null);
   const [focusRequest, setFocusRequest] = useState<{ target: FocusTarget | null; n: number }>({ target: null, n: 0 });
 
   const speech = useSpeechInput();
@@ -206,9 +218,9 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen, prefs }: UseAsk
         ? "Photo discarded. The camera preview is showing. Tap Capture photo."
         : "Photo discarded. Start the camera to take a new photo.",
     );
-  }, [flow, cameraActive, abortSpeech, clearSpeechError, abortRequest, clearAnswer, discardImage, announce]);
+  }, [flow, cameraActive, abortSpeech, clearSpeechError, abortRequest, clearAnswer, discardImage, announce, setCommandActive]);
 
-  const cancel = useCallback(() => {
+  const cancel = useCallback((message?: string) => {
     abortSpeech();
     setCommandActive(false);
     clearSpeechError();
@@ -219,8 +231,8 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen, prefs }: UseAsk
     discardImage();
     setCaptureError(null);
     dispatch({ type: "CANCEL" });
-    announce("Cancelled. The photo, question and answer were discarded.");
-  }, [abortSpeech, clearSpeechError, abortRequest, clearAnswer, discardImage, announce]);
+    announce(typeof message === "string" ? message : "Cancelled. The photo, question and answer were discarded.");
+  }, [abortSpeech, clearSpeechError, abortRequest, clearAnswer, discardImage, announce, setCommandActive]);
 
   const setQuestion = useCallback((text: string) => {
     dispatch({ type: "QUESTION_CHANGED", text });
@@ -248,7 +260,14 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen, prefs }: UseAsk
   }, [lang, speech, announce]);
 
   const startListening = useCallback(() => {
-    if (!canListen(flow) || !speech.supported || commandActive) return;
+    if (!canListen(flow) || !speech.supported) return;
+    if (commandActiveRef.current) {
+      // A voice command is being listened for: dictation cannot start at the same time.
+      const message = "VisionAid is listening for a voice command. Wait for it to finish, or tap Stop listening.";
+      setCommandMessage(message);
+      announce(message);
+      return;
+    }
     if (promptPendingRef.current && isSpeakingGuidance()) return; // the prompt is already playing
     stopOutput(); // the microphone must not hear VisionAid speaking
     onBeforeListen?.();
@@ -265,7 +284,7 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen, prefs }: UseAsk
     }
     skipPromptRef.current = false;
     beginRecognition();
-  }, [flow, lang, speech, commandActive, say, isSpeakingGuidance, stopOutput, onBeforeListen, beginRecognition]);
+  }, [flow, lang, speech, say, isSpeakingGuidance, stopOutput, onBeforeListen, beginRecognition, announce]);
 
   const stopListening = useCallback(() => speech.stop(), [speech]);
 
@@ -274,7 +293,7 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen, prefs }: UseAsk
     abortSpeech();
     setCommandActive(false);
     dispatch({ type: "LISTEN_ENDED" });
-  }, [abortSpeech]);
+  }, [abortSpeech, setCommandActive]);
 
   /**
    * Sends the captured photo and the question. Only ever called from the Ask or
@@ -374,16 +393,17 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen, prefs }: UseAsk
   const runCommand = useCallback(
     (heard: string) => {
       const l = latest.current;
-      const ctx: CommandContext = {
-        canCapture: canCapture(l.flow, l.cameraActive),
-        canRetake: canEditQuestion(l.flow),
-        canListen: canListen(l.flow) && speech.supported,
-        hasAnswer: l.result !== null,
-        canAsk: canAsk(l.flow),
+      const ctx: CommandContext = { step: deriveCommandStep(l.flow.phase, l.flow.hasImage, l.cameraActive) };
+      const said = heard.replace(/\s+/g, " ").trim().slice(0, 60); // shown briefly, never stored or logged
+      const report = (message: string) => {
+        setCommandMessage(message);
+        announce(message);
       };
-      const command = parseCommand(heard); // the transcript is never stored or logged
-      if (!command) return announce(commandHelp(ctx));
-      if (!isCommandAvailable(command, ctx)) return announce(commandUnavailable(command));
+      if (said === "") return report("I did not hear a command. Tap Say a command and try again.");
+      const command = parseCommand(said);
+      if (!command) return report(`I heard \u201c${said}\u201d. ${commandHelp(ctx)}`);
+      if (!isCommandAvailable(command, ctx)) return report(commandUnavailable(command, ctx));
+      setCommandMessage(`Command understood: ${commandLabel(command)}.`); // the action itself announces its result
       switch (command) {
         case "capture-photo":
           return void capture();
@@ -393,13 +413,28 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen, prefs }: UseAsk
           return startListening();
         case "repeat-answer":
           return listenToAnswer();
+        case "done":
+          // Ends this conversation: the photo, question and answer are discarded (nothing was or is sent).
+          cancel(
+            (ctx.step === "sending"
+              ? "Done. The request was cancelled and the photo and question were discarded on this device."
+              : "Done. The photo, question and answer were discarded on this device.") +
+              (l.cameraActive ? " Say capture photo, or use Capture photo, for a new one." : " Start the camera to take a new photo."),
+          );
+          return requestFocus("primary");
         case "ask":
-          // Never sends: the photo and question go to Google only when the person activates Ask.
+          if (effectiveVoiceAsk(l.prefs)) {
+            // The person turned on "Ask by voice" (and was told it sends straight away): send now.
+            setCommandMessage(ASK_BY_VOICE_SENDING);
+            return ask();
+          }
+          // Default: it does not send. The photo and question go to Google only when the person activates Ask.
           requestFocus("ask");
+          setCommandMessage(ASK_NEEDS_CONFIRMATION);
           return announce(ASK_NEEDS_CONFIRMATION);
       }
     },
-    [speech.supported, announce, capture, retake, startListening, listenToAnswer, requestFocus],
+    [announce, capture, retake, cancel, ask, startListening, listenToAnswer, requestFocus],
   );
   const runCommandRef = useRef(runCommand);
   useEffect(() => {
@@ -407,13 +442,19 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen, prefs }: UseAsk
   });
 
   const startCommand = useCallback(() => {
-    if (!prefs.voiceCommands || !speech.supported || commandActive) return;
-    if (phase === "listening" || phase === "capturing" || phase === "sending") {
-      announce("Voice commands are not available while VisionAid is busy.");
+    if (!prefs.voiceCommands || !speech.supported || commandActiveRef.current) return;
+    if (phase === "listening" || phase === "capturing") {
+      // Dictating or capturing: the microphone or camera step must finish first.
+      const message = "Voice commands are not available while VisionAid is listening to your question or taking a photo.";
+      setCommandMessage(message);
+      announce(message);
       return;
     }
-    stopOutput(); // recognition and speech never run together
+    // Speaking is stopped first, so recognition and speech never run together; the person's tap
+    // is an interruption, so the button is never blocked by a prompt that is still playing.
+    stopOutput();
     onBeforeListen?.();
+    setCommandMessage(null);
     let heard = "";
     const started = speech.start({
       lang: COMMAND_LANG,
@@ -431,14 +472,15 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen, prefs }: UseAsk
       setCommandActive(true);
       announce("Listening for a command.");
     }
-  }, [prefs.voiceCommands, speech, commandActive, phase, announce, stopOutput, onBeforeListen]);
+  }, [prefs.voiceCommands, speech, phase, announce, stopOutput, onBeforeListen, setCommandActive]);
 
   /** Stops listening for a command at once, without running anything. */
   const stopCommand = useCallback(() => {
     abortSpeech();
     setCommandActive(false);
+    setCommandMessage(null);
     announce("Stopped listening for a command.");
-  }, [abortSpeech, announce]);
+  }, [abortSpeech, announce, setCommandActive]);
 
   /** After a failure: go back to editing the question (the photo is kept). */
   const edit = useCallback(() => {
@@ -486,7 +528,7 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen, prefs }: UseAsk
       generationRef.current += 1;
       releaseImage();
     };
-  }, [abortSpeech, abortRequest, releaseImage]);
+  }, [abortSpeech, abortRequest, releaseImage, setCommandActive]);
 
   return {
     phase,
@@ -549,6 +591,7 @@ export function useAsk({ videoRef, cameraActive, onBeforeListen, prefs }: UseAsk
     commands: {
       enabled: prefs.voiceCommands && speech.supported,
       active: commandActive,
+      message: commandMessage,
       start: startCommand,
       stop: stopCommand,
     },

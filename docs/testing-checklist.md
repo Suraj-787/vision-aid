@@ -148,7 +148,7 @@ voice choice and request language, mismatch note, recognition `lang` per languag
 typed fallback and recognition errors, double tap on Start speaking, speech is
 cancelled before the microphone starts, engine failures and a device that ignores
 pause, keyboard use, labels, announcements, 44 px targets, no content in
-localStorage/sessionStorage (since Milestone 9 only the three accessibility settings may be stored, and only after the person changes one), regression of the Milestone 1–6 flows.
+localStorage/sessionStorage (since Milestone 9 only the four accessibility settings may be stored, and only after the person changes one), regression of the Milestone 1–6 flows.
 
 ### Physical devices (NOT done; required before claiming Hindi/Kannada support)
 Record for each device/browser: OS version, browser version, result, notes.
@@ -251,17 +251,18 @@ tunnel to a **production** build, because the security headers are production-on
 ### Automated (run 2026-11-06; headless Chrome, fake camera, MOCKED Gemini and speech)
 These prove the app's logic. **They do not prove how TalkBack or VoiceOver sound or behave, nor anything about a
 real phone, real speech recognition or a real blind user.**
-- `npm run lint`, `npm run typecheck`, `npm run build`: pass. `npm test`: 643 tests pass (42 new: the announcer's dedupe
+- `npm run lint`, `npm run typecheck`, `npm run build`: pass. `npm test`: 690 tests pass after Milestone 10 (57 were added for Milestone 9: the announcer's dedupe
   and re-announce rules, the screen-reader message builders, preference parsing and storage, the Hindi/Kannada/English
   guidance wording, and the voice-command parser and step rules).
-- `scripts/e2e/ui-m9.e2e.mjs` (146 checks) uses a *virtual screen reader* (live-region announcements and focus):
+- `scripts/e2e/ui-m9.e2e.mjs` (225 checks) uses a *virtual screen reader* (live-region announcements and focus):
   entry structure; screen-reader-first flow with one announcement per event, focus never lost, answer announced as ready and
   **not read**, no speech at all; disabled buttons explain themselves; the recognised question is read back; quality advice is
   advisory; voice-guided mode (chosen by the person, remembered, nothing spoken on load, one prompt per event, Hindi
   voice for Hindi, **no wrong-language fallback**); automatic reading only in voice-guided mode and after the prompt; the
   microphone starts only after its prompt finished; Stop VisionAid voice, Escape, Stop listening, page hide; failure announced
-  once; voice commands (explicit, English, restricted by step, **"ask" never sends**, nothing stored); unsupported speech
-  or recognition; settings labelled, described, keyboard operable and at least 44 px.
+  once; voice commands (explicit, English, restricted by step, **"ask" sends only when Ask by voice is on**, nothing stored); unsupported speech
+  or recognition; several commands in a row in both modes (including while a prompt is still playing), a speech engine that loses
+end events, silence and unrecognised commands shown on screen; settings labelled, described, keyboard operable and at least 44 px.
 - Regression: `ui-m1-m6` (86), `ui-m7` (153), `ui-m8` (67), `lifecycle` (10) pass; `a11y-audit` (13 runs including the
   settings expanded and voice-guided mode): 0 axe violations, 0 overflow, 0 targets under 44 px.
 - Assertions changed on purpose (nothing was weakened): the answer is no longer announced in full (`ui-m1-m6` now checks
@@ -304,11 +305,19 @@ must start from a tap); screen lock and app switching. Does `webkitSpeechRecogni
 7. Native speakers of Hindi and Kannada should read every prompt in `src/lib/guidance/messages.ts` and say whether it is natural and means the same as the English. **Until they have, treat those texts as unreviewed.**
 
 **D. Voice commands (turn on in settings)**
-Tap **Say a command** and try each: capture photo (camera on), retake photo, start speaking, repeat answer, ask, and a phrase that is not a command. Confirm: one command per tap, nothing listens in the
-background, **"ask" only focuses the Ask button and never sends**, commands that do not fit the step are explained, **Stop listening** cancels at once, and nothing is stored. Note recognition accuracy in noise.
+Tap **Say a command** and try each (including **done** after an answer: it must clear the photo and answer, keep the camera on and let you start again), **one after another** (also right after a photo, while a prompt may still be playing; the tap should interrupt the prompt): capture photo (camera on), retake photo, start speaking, repeat answer, ask, done, and a phrase that is not a command (for example "I am done reading", which must do nothing). Confirm: one command per tap, nothing listens in the
+background, **with Ask by voice OFF (default), "ask" only focuses the Ask button; with it ON, "ask" sends the photo and question at once, but only with a photo and a question, and never from ordinary speech containing the word**, commands that do not fit the step are explained, **Stop listening** cancels at once, and nothing is stored. Note recognition accuracy in noise.
 
 **E. Real users**
 Ask blind and low-vision people to do: open → Start camera → Capture → Ask → Listen → Repeat or Stop, in both modes, without help. Record where they hesitated, what confused them (names, order, repetition, speech overlap) and what they would change.
+
+## Milestone 10: voice interaction consolidation
+
+The complete record, with PASS / FAIL / BLOCKED / NOT TESTED statuses, the step-by-step command table, the Ask-by-voice and Done
+behaviour, and the manual real-device checklist, is in **`docs/milestone-10-validation.md`**. Automated results (2026-11-08, mocked
+speech and Gemini): `scripts/e2e/ui-m10.e2e.mjs` 212 checks, plus all earlier suites and the accessibility audit, pass.
+**Every real-device case (Android Chrome, TalkBack, iOS Safari, VoiceOver, Hindi and Kannada voices, voice commands, Ask by voice, Done)
+is NOT TESTED.**
 
 ## Retained infrastructure (not part of Tap-to-Ask)
 

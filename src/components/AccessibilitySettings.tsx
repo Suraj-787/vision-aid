@@ -28,7 +28,7 @@ const MODES: Array<{ value: InteractionMode; label: string; help: string }> = [
 
 /**
  * How VisionAid should talk to the person. Collapsed by default; the current choice is
- * in the heading row so it is known without opening it. Only these three choices are
+ * in the heading row so it is known without opening it. Only these four choices are
  * remembered in this browser (never photos, questions, answers or transcripts).
  */
 export function AccessibilitySettings({ ask, prefs, update }: AccessibilitySettingsProps) {
@@ -119,8 +119,34 @@ export function AccessibilitySettings({ ask, prefs, update }: AccessibilitySetti
                 <span className="block font-bold">Voice commands (English)</span>
                 <span id="commands-help" className="block text-caption text-muted">
                   Adds a Say a command button. Each tap listens for one command, then stops: VisionAid never listens
-                  in the background. Your browser may send your voice to its own speech service. Asking still needs the
-                  Ask button.
+                  in the background. Your browser may send your voice to its own speech service.
+                </span>
+              </span>
+            </label>
+
+            <label className="flex min-h-12 items-start gap-3">
+              <input
+                type="checkbox"
+                // shown as on only when it is actually in effect (it cannot send without voice commands)
+                checked={prefs.voiceAsk && prefs.voiceCommands}
+                disabled={!prefs.voiceCommands}
+                onChange={(event) => {
+                  update({ voiceAsk: event.target.checked });
+                  ask.notify(
+                    event.target.checked
+                      ? "Ask by voice is on. Saying ask will send your photo and question to Google Gemini straight away."
+                      : "Ask by voice is off. Saying ask will only move to the Ask button.",
+                  );
+                }}
+                aria-describedby="voice-ask-help"
+                className="mt-0.5 h-6 w-6 shrink-0 accent-[var(--primary)]"
+              />
+              <span>
+                <span className="block font-bold">Ask by voice (sends straight away)</span>
+                <span id="voice-ask-help" className="block text-caption text-muted">
+                  {prefs.voiceCommands
+                    ? "When on, saying \u201cask\u201d sends your photo and question to Google\u2019s Gemini service at once, with no second step. When off, it only moves to the Ask button and you send it yourself."
+                    : "Turn on Voice commands first. When on, saying \u201cask\u201d sends your photo and question to Google\u2019s Gemini service at once, with no second step. When off, it only moves to the Ask button."}
                 </span>
               </span>
             </label>
@@ -151,7 +177,7 @@ export function AccessibilitySettings({ ask, prefs, update }: AccessibilitySetti
           </div>
 
           <p className="text-caption text-muted">
-            Saved in this browser: only these settings. Never photos, questions, answers or what you say.
+            Saved in this browser: only these four settings. Never photos, questions, answers or what you say.
           </p>
         </div>
       </details>

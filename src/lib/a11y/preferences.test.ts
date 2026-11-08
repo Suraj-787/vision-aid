@@ -4,6 +4,7 @@ import {
   createPrefsStore,
   DEFAULT_PREFS,
   effectiveAutoRead,
+  effectiveVoiceAsk,
   isVoiceGuided,
   loadPrefs,
   parsePrefs,
@@ -20,7 +21,7 @@ const memory = (initial: Record<string, string> = {}): StorageLike & { data: Rec
 
 describe("defaults", () => {
   it("screen-reader-first, nothing automatic, no commands", () => {
-    assert.deepEqual(DEFAULT_PREFS, { mode: "screen-reader", autoReadAnswers: false, voiceCommands: false });
+    assert.deepEqual(DEFAULT_PREFS, { mode: "screen-reader", autoReadAnswers: false, voiceCommands: false, voiceAsk: false });
     assert.equal(isVoiceGuided(DEFAULT_PREFS), false);
     assert.equal(effectiveAutoRead(DEFAULT_PREFS), false);
   });
@@ -28,34 +29,51 @@ describe("defaults", () => {
 
 describe("parsePrefs is strict", () => {
   it("accepts exactly the allowed values", () => {
-    assert.deepEqual(parsePrefs({ mode: "voice-guided", autoReadAnswers: true, voiceCommands: true }), {
+    assert.deepEqual(parsePrefs({ mode: "voice-guided", autoReadAnswers: true, voiceCommands: true, voiceAsk: true }), {
       mode: "voice-guided",
       autoReadAnswers: true,
       voiceCommands: true,
+      voiceAsk: true,
     });
   });
   it("falls back per field for anything else, and ignores unknown fields", () => {
     for (const bad of [null, undefined, 5, "x", [], { mode: "other", autoReadAnswers: "yes", voiceCommands: 1, extra: "y" }]) {
       assert.deepEqual(parsePrefs(bad), DEFAULT_PREFS, JSON.stringify(bad));
     }
-    assert.deepEqual(Object.keys(parsePrefs({ mode: "voice-guided", question: "private" })).sort(), ["autoReadAnswers", "mode", "voiceCommands"]);
+    assert.deepEqual(Object.keys(parsePrefs({ mode: "voice-guided", question: "private" })).sort(), ["autoReadAnswers", "mode", "voiceAsk", "voiceCommands"]);
+  });
+});
+
+describe("asking by voice is off by default and needs voice commands", () => {
+  it("is off by default", () => {
+    assert.equal(DEFAULT_PREFS.voiceAsk, false);
+    assert.equal(effectiveVoiceAsk(DEFAULT_PREFS), false);
+    assert.equal(parsePrefs({ voiceCommands: true }).voiceAsk, false);
+  });
+  it("only counts as on when the person turned it on AND voice commands are on", () => {
+    assert.equal(effectiveVoiceAsk({ ...DEFAULT_PREFS, voiceCommands: true, voiceAsk: true }), true);
+    assert.equal(effectiveVoiceAsk({ ...DEFAULT_PREFS, voiceCommands: false, voiceAsk: true }), false);
+    assert.equal(effectiveVoiceAsk({ ...DEFAULT_PREFS, voiceCommands: true, voiceAsk: false }), false);
+  });
+  it("anything other than exactly true is off (a damaged or edited value cannot enable sending)", () => {
+    for (const bad of ["true", 1, "yes", null, {}, []]) assert.equal(parsePrefs({ voiceCommands: true, voiceAsk: bad }).voiceAsk, false, JSON.stringify(bad));
   });
 });
 
 describe("automatic reading is a voice-guided feature only", () => {
   it("is off in screen-reader mode even when the preference was saved as on", () => {
-    assert.equal(effectiveAutoRead({ mode: "screen-reader", autoReadAnswers: true, voiceCommands: false }), false);
-    assert.equal(effectiveAutoRead({ mode: "voice-guided", autoReadAnswers: true, voiceCommands: false }), true);
-    assert.equal(effectiveAutoRead({ mode: "voice-guided", autoReadAnswers: false, voiceCommands: false }), false);
+    assert.equal(effectiveAutoRead({ mode: "screen-reader", autoReadAnswers: true, voiceCommands: false, voiceAsk: false }), false);
+    assert.equal(effectiveAutoRead({ mode: "voice-guided", autoReadAnswers: true, voiceCommands: false, voiceAsk: false }), true);
+    assert.equal(effectiveAutoRead({ mode: "voice-guided", autoReadAnswers: false, voiceCommands: false, voiceAsk: false }), false);
   });
 });
 
 describe("storage", () => {
   it("writes only the three preference fields under one key", () => {
     const s = memory();
-    assert.equal(savePrefs(s, { mode: "voice-guided", autoReadAnswers: true, voiceCommands: false }), true);
+    assert.equal(savePrefs(s, { mode: "voice-guided", autoReadAnswers: true, voiceCommands: false, voiceAsk: false }), true);
     assert.deepEqual(Object.keys(s.data), [PREFS_STORAGE_KEY]);
-    assert.deepEqual(JSON.parse(s.data[PREFS_STORAGE_KEY]), { mode: "voice-guided", autoReadAnswers: true, voiceCommands: false });
+    assert.deepEqual(JSON.parse(s.data[PREFS_STORAGE_KEY]), { mode: "voice-guided", autoReadAnswers: true, voiceCommands: false, voiceAsk: false });
     assert.equal(serializePrefs({ ...DEFAULT_PREFS, mode: "voice-guided", ...( { question: "secret" } as object) } as never).includes("secret"), false);
   });
 
@@ -71,8 +89,8 @@ describe("storage", () => {
 
   it("loads what was saved", () => {
     const s = memory();
-    savePrefs(s, { mode: "voice-guided", autoReadAnswers: false, voiceCommands: true });
-    assert.deepEqual(loadPrefs(s), { mode: "voice-guided", autoReadAnswers: false, voiceCommands: true });
+    savePrefs(s, { mode: "voice-guided", autoReadAnswers: false, voiceCommands: true, voiceAsk: false });
+    assert.deepEqual(loadPrefs(s), { mode: "voice-guided", autoReadAnswers: false, voiceCommands: true, voiceAsk: false });
   });
 });
 
@@ -97,7 +115,7 @@ describe("createPrefsStore", () => {
     assert.notEqual(store.getSnapshot(), before);
     assert.equal(JSON.parse(s.data[PREFS_STORAGE_KEY]).mode, "voice-guided");
     off();
-    store.update({ voiceCommands: true });
+    store.update({ voiceCommands: true, voiceAsk: false });
     assert.equal(calls, 1);
   });
 

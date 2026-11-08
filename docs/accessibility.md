@@ -79,22 +79,57 @@ processing, answer ready, request failed. Rules:
 Turned on in settings. A **Say a command** button listens for **one** command, then stops (never in the
 background, never on load; the permission prompt follows the tap). It reuses the single recognition
 session (`useSpeechInput`), so it cannot overlap dictation. Commands: *capture photo*, *retake photo*,
-*start speaking*, *repeat answer*, *ask*. The whole utterance must be a command (no word spotting), and
-a command is run only when it fits the step, otherwise the reason is announced. A **Stop listening**
+*start speaking*, *repeat answer*, *ask*, *done*. The whole utterance must be a command (no word spotting), and
+a command is run only when it fits the step, otherwise the reason is announced. The outcome is also shown
+on screen ("Command understood: …", or what was heard and what can be said now), and silence is explained.
+Tapping **Say a command** while VisionAid is speaking **interrupts the speech first and then listens**, so they never
+overlap and a prompt never blocks the next command (an earlier version disabled the button during prompts, which made
+commands appear to do nothing right after a capture). A **Stop listening**
 button cancels at once; page hide, Cancel and unmount abort it. Transcripts are not stored or logged.
 
-- **"Ask"/"send" never sends.** It moves focus to the Ask button and says what Ask does; the photo and
-  question go to Google only when the person activates Ask.
+- **"Done" ends the conversation.** It does what the Done button does: the photo, question and answer are discarded on the device
+  (nothing is sent), speech stops, the camera stays on, focus moves to Capture photo and the announcement says so, so the whole
+  process can start again ("capture photo", "start speaking", …). It works once there is a photo (also from the failure screen, and
+  while a request is being sent, where it cancels the request like the Cancel button), and, like every command, only as the whole
+  utterance ("I am done reading the label" does nothing). It discards the application's session data on this device only: it does
+  not delete anything from the device's files and it does not (and cannot) delete anything Google may already have received.
+- **"Ask" / "send" (sends only if you opt in).** By default the word only moves focus to the Ask button and says what Ask does; the photo
+  and question go to Google only when the person activates Ask. In *Accessibility settings* the person can turn on **Ask by voice (sends
+  straight away)** (off by default, and only available while *Voice commands* are on). The wording states that saying "ask" then sends the
+  photo and question to Google's Gemini service at once, with no second step, and turning it on is announced. This is the explicit,
+  well-defined opt-in that preserves informed consent. Safeguards that stay: it sends only when a photo **and** a question exist and no
+  request is running (otherwise it says why and sends nothing); the whole utterance must be the word (ordinary speech containing "ask" does
+  nothing); there is still no retry; the announcement and screen say "Sending your photo and question to Google Gemini". Phrases: ask, ask now,
+  send, send it, send question, submit ("ask a question" starts dictation instead).
 - **"Stop speaking" and "Stop listening" are deliberately not voice commands**: while dictating, the
   microphone is busy with the question; while VisionAid speaks the microphone must be off (it would hear
   VisionAid). Both are buttons (and Escape).
 - Hindi and Kannada commands are not implemented: the phrases cannot be validated here, and recognising
   English commands with a Hindi recogniser is unreliable.
 
+### Which command works where (Milestone 10)
+
+One table decides this (`lib/commands/voice-commands.ts`, exhaustively unit-tested; full detail in
+`docs/milestone-10-validation.md`). A recognised command that does not fit the step is **never silently
+ignored**: a reason written for that step is shown on screen and announced, and nothing changes.
+
+| Step | Commands that work |
+|---|---|
+| camera off | none |
+| camera on, no photo | capture photo |
+| photo, no question yet | retake photo, start speaking, done |
+| photo and question | retake photo, start speaking, ask, done |
+| request being sent | done (cancels the request) |
+| answer showing | repeat answer, done |
+| request failed | done |
+| capturing or dictating | none (VisionAid is busy) |
+
+If voice commands are turned on in a browser without speech recognition, the page says so instead of showing nothing.
+
 ## Preferences and privacy
 
-Three choices are remembered in this browser's `localStorage` under one key
-(`visionaid.accessibility.v1`): the mode, automatic reading, and voice commands. Nothing is written until
+Four choices are remembered in this browser's `localStorage` under one key
+(`visionaid.accessibility.v1`): the mode, automatic reading, voice commands, and asking by voice. Nothing is written until
 the person changes one, values are validated strictly on read, and **no photo, question, answer, transcript,
 language choice or audio is ever stored**. If storage is blocked the choices work for the visit only. The
 selected language is still **not** remembered (Milestone 7 decision); a person who always uses Hindi or
@@ -120,6 +155,9 @@ it. Whether the wording is natural and correct has **not** been checked by anyon
   (the welcome prompt, when the mode is chosen, is that tap). A blocked prompt is reported, not retried.
 - **Listening after a spoken prompt** is also started without a tap; a browser may refuse. If so, the error is shown and the next tap starts
   listening at once, without another prompt.
+- Some engines never report the end of an utterance. The speech player holds a reference to each utterance and, when the engine
+  reports `speaking`/`pending`, notices after about two seconds of silence that a playback ended and releases the controls
+  (otherwise "Stop VisionAid voice" and the Listen controls could stay stuck). Verify on real devices.
 - Using **Voice guided together with TalkBack or VoiceOver** produces two voices; the settings say so.
 - Browser speech recognition may send the person's voice to an external service (as before).
 - `aria-live` behaviour differs between screen readers; the contract above is conservative (one polite region,

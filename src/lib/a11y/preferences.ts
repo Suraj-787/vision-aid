@@ -1,7 +1,7 @@
 /**
  * Accessibility preferences (Milestone 9). Deliberately tiny: how VisionAid should
  * talk to the person. The only thing ever written to the browser's storage is this
- * object (three fields); never photos, questions, answers, transcripts or audio.
+ * object (four fields); never photos, questions, answers, transcripts or audio.
  */
 export type InteractionMode = "screen-reader" | "voice-guided";
 
@@ -12,12 +12,19 @@ export interface A11yPrefs {
   autoReadAnswers: boolean;
   /** Show the one-shot "Say a command" control (English commands). */
   voiceCommands: boolean;
+  /**
+   * Let the spoken command "ask" SEND the photo and question to Google Gemini, instead of only moving to
+   * the Ask button. Off by default; needs voice commands. Turning it on is the person's informed consent
+   * to sending by voice, so it is a separate, plainly worded choice.
+   */
+  voiceAsk: boolean;
 }
 
 export const DEFAULT_PREFS: A11yPrefs = {
   mode: "screen-reader",
   autoReadAnswers: false,
   voiceCommands: false,
+  voiceAsk: false,
 };
 
 export const PREFS_STORAGE_KEY = "visionaid.accessibility.v1";
@@ -30,6 +37,7 @@ export function parsePrefs(raw: unknown): A11yPrefs {
     mode: r.mode === "voice-guided" ? "voice-guided" : "screen-reader",
     autoReadAnswers: r.autoReadAnswers === true,
     voiceCommands: r.voiceCommands === true,
+    voiceAsk: r.voiceAsk === true,
   };
 }
 
@@ -39,12 +47,18 @@ export function serializePrefs(prefs: A11yPrefs): string {
     mode: prefs.mode,
     autoReadAnswers: prefs.autoReadAnswers,
     voiceCommands: prefs.voiceCommands,
+    voiceAsk: prefs.voiceAsk,
   });
 }
 
 /** Automatic reading is a voice-guided feature: it never happens in screen-reader mode. */
 export function effectiveAutoRead(prefs: A11yPrefs): boolean {
   return prefs.mode === "voice-guided" && prefs.autoReadAnswers;
+}
+
+/** The spoken "ask" sends only when voice commands are on AND the person turned this on. */
+export function effectiveVoiceAsk(prefs: A11yPrefs): boolean {
+  return prefs.voiceCommands && prefs.voiceAsk;
 }
 
 export function isVoiceGuided(prefs: A11yPrefs): boolean {

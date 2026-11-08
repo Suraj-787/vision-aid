@@ -145,9 +145,9 @@ async function handleAskUnsafe(request: Request, deps: AskDeps): Promise<Respons
       return failure("INVALID_MODEL_RESPONSE", deps);
     }
 
-    deps.log(
-      `[ask] answered in ${deps.now() - started} ms (image ${Math.round(imageBytes / 1024)} KB, intent ${result.intent})`,
-    );
+    // Timing and the photo's size only. Nothing derived from the question or the answer (not even its
+    // category) is logged, because even the kind of question someone asks is private.
+    deps.log(`[ask] answered in ${deps.now() - started} ms (image ${Math.round(imageBytes / 1024)} KB)`);
     return Response.json(result, { status: 200, headers: SAFE_HEADERS });
   } catch (err) {
     if (request.signal.aborted) {
